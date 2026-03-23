@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 
 import { cn } from "@/lib/utils";
 
@@ -11,6 +11,8 @@ type NavItem = {
   href: string;
   badge?: string;
 };
+
+const SIDEBAR_COLLAPSED_STORAGE_KEY = "uvi-space.sidebar.collapsed.v1";
 
 function getCompactLabel(label: string) {
   const words = label.split(" ").filter(Boolean);
@@ -249,6 +251,19 @@ export function AppTopbar({ onMenuOpen }: { onMenuOpen: () => void }) {
 export function AppShell({ children }: { children: React.ReactNode }) {
   const [mobileOpen, setMobileOpen] = useState(false);
   const [desktopCollapsed, setDesktopCollapsed] = useState(false);
+
+  useEffect(() => {
+    const storedValue = localStorage.getItem(SIDEBAR_COLLAPSED_STORAGE_KEY);
+    if (storedValue === null) {
+      return;
+    }
+
+    setDesktopCollapsed(storedValue === "1");
+  }, []);
+
+  useEffect(() => {
+    localStorage.setItem(SIDEBAR_COLLAPSED_STORAGE_KEY, desktopCollapsed ? "1" : "0");
+  }, [desktopCollapsed]);
 
   return (
     <div className="flex min-h-screen">
