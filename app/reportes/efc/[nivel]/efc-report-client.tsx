@@ -1,8 +1,9 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useMemo, useState } from "react";
+import { Fragment, useEffect, useMemo, useState } from "react";
 
+import { ReportTableControls } from "@/components/report-table-controls";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -556,123 +557,111 @@ export function EfcReportClient({ level, definition }: EfcReportClientProps) {
               </CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
-              <div className="rounded-lg border p-3">
-                <div className="grid gap-3 lg:grid-cols-4">
-                  <div className="space-y-1 lg:col-span-2">
-                    <Label htmlFor="searchTable">Buscar</Label>
-                    <input
-                      id="searchTable"
-                      type="text"
-                      value={searchText}
-                      onChange={(event) => setSearchText(event.target.value)}
-                      placeholder="Curso, docente, actividad, porcentaje..."
-                      className="flex h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm shadow-xs transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                    />
+              <ReportTableControls
+                filters={(
+                  <div className="grid gap-3 lg:grid-cols-4">
+                    <div className="space-y-1 lg:col-span-2">
+                      <Label htmlFor="searchTable">Buscar</Label>
+                      <input
+                        id="searchTable"
+                        type="text"
+                        value={searchText}
+                        onChange={(event) => setSearchText(event.target.value)}
+                        placeholder="Curso, docente, actividad, porcentaje..."
+                        className="flex h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm shadow-xs transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                      />
+                    </div>
+
+                    <div className="space-y-1">
+                      <Label htmlFor="statusFilter">Filtro por estado</Label>
+                      <select
+                        id="statusFilter"
+                        value={statusFilter}
+                        onChange={(event) => setStatusFilter(event.target.value as "all" | ReportStatus)}
+                        className="flex h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm shadow-xs transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                      >
+                        <option value="all">Todos</option>
+                        <option value={REPORT_STATUS.success}>{REPORT_STATUS.success}</option>
+                        <option value={REPORT_STATUS.fails}>{REPORT_STATUS.fails}</option>
+                        <option value={REPORT_STATUS.notApply}>{REPORT_STATUS.notApply}</option>
+                      </select>
+                    </div>
+
+                    <div className="space-y-1">
+                      <Label htmlFor="percentFilter">Filtro porcentaje</Label>
+                      <select
+                        id="percentFilter"
+                        value={percentFilter}
+                        onChange={(event) => setPercentFilter(event.target.value as PercentFilter)}
+                        className="flex h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm shadow-xs transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                      >
+                        <option value="all">Todos</option>
+                        <option value="high">80-100</option>
+                        <option value="medium">51-79</option>
+                        <option value="low">0-50</option>
+                        <option value="noActivity">Sin actividades</option>
+                        <option value="mismatch">No coincide categoría</option>
+                      </select>
+                    </div>
                   </div>
+                )}
+                columns={
+                  <>
+                    <p className="px-2 py-1 text-xs font-medium text-muted-foreground">Base</p>
+                    {baseColumns.map((column) => (
+                      <label key={column} className="flex items-center gap-2 rounded px-2 py-1 text-sm hover:bg-accent">
+                        <input
+                          type="checkbox"
+                          checked={visibleBaseColumns[column]}
+                          onChange={() => toggleBaseColumn(column)}
+                        />
+                        <span>{baseColumnLabels[column]}</span>
+                      </label>
+                    ))}
 
-                  <div className="space-y-1">
-                    <Label htmlFor="statusFilter">Filtro por estado</Label>
-                    <select
-                      id="statusFilter"
-                      value={statusFilter}
-                      onChange={(event) => setStatusFilter(event.target.value as "all" | ReportStatus)}
-                      className="flex h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm shadow-xs transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                    >
-                      <option value="all">Todos</option>
-                      <option value={REPORT_STATUS.success}>{REPORT_STATUS.success}</option>
-                      <option value={REPORT_STATUS.fails}>{REPORT_STATUS.fails}</option>
-                      <option value={REPORT_STATUS.notApply}>{REPORT_STATUS.notApply}</option>
-                    </select>
-                  </div>
-
-                  <div className="space-y-1">
-                    <Label htmlFor="percentFilter">Filtro porcentaje</Label>
-                    <select
-                      id="percentFilter"
-                      value={percentFilter}
-                      onChange={(event) => setPercentFilter(event.target.value as PercentFilter)}
-                      className="flex h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm shadow-xs transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                    >
-                      <option value="all">Todos</option>
-                      <option value="high">80-100</option>
-                      <option value="medium">51-79</option>
-                      <option value="low">0-50</option>
-                      <option value="noActivity">Sin actividades</option>
-                      <option value="mismatch">No coincide categoría</option>
-                    </select>
-                  </div>
-                </div>
-
-                <div className="mt-3 flex flex-wrap items-center justify-between gap-3">
-                  <p className="text-xs text-muted-foreground">
-                    Mostrando {filteredResults.length} de {payload.results.length} cursos · {visibleCount} columnas visibles
-                  </p>
-
-                  <div className="flex flex-wrap items-center gap-2">
-                    <details className="relative">
-                      <summary className="cursor-pointer rounded-md border border-input px-3 py-1.5 text-sm hover:bg-accent hover:text-accent-foreground">
-                        Ocultar/mostrar columnas
-                      </summary>
-
-                      <div className="absolute right-0 z-20 mt-2 max-h-80 w-72 overflow-auto rounded-md border bg-popover p-2 shadow-lg">
-                        <p className="px-2 py-1 text-xs font-medium text-muted-foreground">Base</p>
-                        {baseColumns.map((column) => (
-                          <label key={column} className="flex items-center gap-2 rounded px-2 py-1 text-sm hover:bg-accent">
-                            <input
-                              type="checkbox"
-                              checked={visibleBaseColumns[column]}
-                              onChange={() => toggleBaseColumn(column)}
-                            />
-                            <span>{baseColumnLabels[column]}</span>
-                          </label>
+                    {payload.maxActivities > 0 ? (
+                      <>
+                        <p className="mt-2 px-2 py-1 text-xs font-medium text-muted-foreground">Actividades</p>
+                        {Array.from({ length: payload.maxActivities }, (_, index) => index + 1).map((activityIndex) => (
+                          <div key={`toggle-activity-${activityIndex}`} className="rounded-md border p-2">
+                            <p className="mb-1 text-xs font-medium">Actividad {activityIndex}</p>
+                            <label className="flex items-center gap-2 rounded px-1 py-1 text-xs hover:bg-accent">
+                              <input
+                                type="checkbox"
+                                checked={visibleActivities[`a${activityIndex}-nombre`] ?? false}
+                                onChange={() => toggleActivityColumn(`a${activityIndex}-nombre`)}
+                              />
+                              Nombre
+                            </label>
+                            <label className="flex items-center gap-2 rounded px-1 py-1 text-xs hover:bg-accent">
+                              <input
+                                type="checkbox"
+                                checked={visibleActivities[`a${activityIndex}-calificacion`] ?? false}
+                                onChange={() => toggleActivityColumn(`a${activityIndex}-calificacion`)}
+                              />
+                              Calificación
+                            </label>
+                            <label className="flex items-center gap-2 rounded px-1 py-1 text-xs hover:bg-accent">
+                              <input
+                                type="checkbox"
+                                checked={visibleActivities[`a${activityIndex}-retro`] ?? false}
+                                onChange={() => toggleActivityColumn(`a${activityIndex}-retro`)}
+                              />
+                              Retroalimentación
+                            </label>
+                          </div>
                         ))}
-
-                        {payload.maxActivities > 0 ? (
-                          <>
-                            <p className="mt-2 px-2 py-1 text-xs font-medium text-muted-foreground">Actividades</p>
-                            {Array.from({ length: payload.maxActivities }, (_, index) => index + 1).map((activityIndex) => (
-                              <div key={`toggle-activity-${activityIndex}`} className="rounded-md border p-2">
-                                <p className="mb-1 text-xs font-medium">Actividad {activityIndex}</p>
-                                <label className="flex items-center gap-2 rounded px-1 py-1 text-xs hover:bg-accent">
-                                  <input
-                                    type="checkbox"
-                                    checked={visibleActivities[`a${activityIndex}-nombre`] ?? false}
-                                    onChange={() => toggleActivityColumn(`a${activityIndex}-nombre`)}
-                                  />
-                                  Nombre
-                                </label>
-                                <label className="flex items-center gap-2 rounded px-1 py-1 text-xs hover:bg-accent">
-                                  <input
-                                    type="checkbox"
-                                    checked={visibleActivities[`a${activityIndex}-calificacion`] ?? false}
-                                    onChange={() => toggleActivityColumn(`a${activityIndex}-calificacion`)}
-                                  />
-                                  Calificación
-                                </label>
-                                <label className="flex items-center gap-2 rounded px-1 py-1 text-xs hover:bg-accent">
-                                  <input
-                                    type="checkbox"
-                                    checked={visibleActivities[`a${activityIndex}-retro`] ?? false}
-                                    onChange={() => toggleActivityColumn(`a${activityIndex}-retro`)}
-                                  />
-                                  Retroalimentación
-                                </label>
-                              </div>
-                            ))}
-                          </>
-                        ) : null}
-                      </div>
-                    </details>
-
-                    <Button type="button" variant="outline" onClick={resetFilters}>
-                      Limpiar filtros
-                    </Button>
-                    <Button type="button" onClick={downloadCsv} disabled={filteredResults.length === 0 || visibleCount === 0}>
-                      Descargar CSV
-                    </Button>
-                  </div>
-                </div>
-              </div>
+                      </>
+                    ) : null}
+                  </>
+                }
+                filteredCount={filteredResults.length}
+                totalCount={payload.results.length}
+                visibleCount={visibleCount}
+                onResetFilters={resetFilters}
+                onDownloadCsv={downloadCsv}
+                disableDownload={filteredResults.length === 0 || visibleCount === 0}
+              />
 
               <div className="overflow-x-auto rounded-lg border">
                 <table className="min-w-475 text-sm">
@@ -690,7 +679,7 @@ export function EfcReportClient({ level, definition }: EfcReportClientProps) {
                       {visibleBaseColumns.docentes ? <th className="px-3 py-2 text-left font-medium">Docentes</th> : null}
 
                       {Array.from({ length: payload.maxActivities }, (_, index) => index + 1).map((activityIndex) => (
-                        <>
+                        <Fragment key={`h-group-${activityIndex}`}>
                           {visibleActivities[`a${activityIndex}-nombre`] ? (
                             <th key={`h-${activityIndex}-nombre`} className="px-3 py-2 text-left font-medium">
                               Nombre actividad {activityIndex}
@@ -706,7 +695,7 @@ export function EfcReportClient({ level, definition }: EfcReportClientProps) {
                               Retroalimentación {activityIndex}
                             </th>
                           ) : null}
-                        </>
+                        </Fragment>
                       ))}
 
                       {visibleBaseColumns.porcentaje ? <th className="px-3 py-2 text-left font-medium">%</th> : null}
@@ -739,7 +728,7 @@ export function EfcReportClient({ level, definition }: EfcReportClientProps) {
                             const activity = row.actividades[activityIndex - 1];
 
                             return (
-                              <>
+                              <Fragment key={`r-group-${row.courseId}-${row.semester}-${activityIndex}`}>
                                 {visibleActivities[`a${activityIndex}-nombre`] ? (
                                   <td key={`r-${row.courseId}-${activityIndex}-nombre`} className="px-3 py-2">
                                     {activity
@@ -775,7 +764,7 @@ export function EfcReportClient({ level, definition }: EfcReportClientProps) {
                                     )}
                                   </td>
                                 ) : null}
-                              </>
+                              </Fragment>
                             );
                           })}
 
