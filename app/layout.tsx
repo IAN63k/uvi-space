@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { Roboto, Roboto_Mono } from "next/font/google";
 import "./globals.css";
+import packageJson from "../package.json";
 
 import { AppShell } from "@/components/app-sidebar";
 
@@ -28,10 +29,12 @@ export default function RootLayout({
 }: Readonly<{
   children: React.ReactNode;
 }>) {
+  const appVersion = packageJson.version ?? "0.0.0";
+
   return (
     <html lang="es">
       <body className={`${roboto.variable} ${robotoMono.variable} font-sans antialiased`}>
-        <AppShell>{children}</AppShell>
+        <AppShell appVersion={appVersion}>{children}</AppShell>
       </body>
     </html>
   );

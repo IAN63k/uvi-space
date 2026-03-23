@@ -249,7 +249,13 @@ export function AppTopbar({ onMenuOpen }: { onMenuOpen: () => void }) {
 }
 
 // Root shell — renders desktop sidebar + mobile drawer
-export function AppShell({ children }: { children: React.ReactNode }) {
+export function AppShell({
+  children,
+  appVersion,
+}: {
+  children: React.ReactNode;
+  appVersion: string;
+}) {
   const [mobileOpen, setMobileOpen] = useState(false);
   const [desktopCollapsed, setDesktopCollapsed] = useState(false);
 
@@ -276,6 +282,12 @@ export function AppShell({ children }: { children: React.ReactNode }) {
       <div className={cn("flex min-w-0 flex-1 flex-col transition-[padding] duration-200", desktopCollapsed ? "lg:pl-20" : "lg:pl-60")}>
         <AppTopbar onMenuOpen={() => setMobileOpen(true)} />
         <main className="flex-1">{children}</main>
+        <footer className="border-t border-border bg-background/90 px-4 py-3 backdrop-blur supports-backdrop-filter:bg-background/70 md:px-6">
+          <div className="mx-auto flex w-full max-w-6xl items-center justify-between text-xs text-muted-foreground">
+            <span>© {new Date().getFullYear()} UNIAJCVirtual - UVI Space</span>
+            <span className="rounded-full border border-border bg-muted px-2 py-0.5 font-medium text-foreground/80">v{appVersion}</span>
+          </div>
+        </footer>
       </div>
     </div>
   );
