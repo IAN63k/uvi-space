@@ -10,6 +10,7 @@ type NavItem = {
   label: string;
   href: string;
   badge?: string;
+  shortLabel?: string;
 };
 
 const SIDEBAR_COLLAPSED_STORAGE_KEY = "uvi-space.sidebar.collapsed.v1";
@@ -24,24 +25,24 @@ function getCompactLabel(label: string) {
 }
 
 const reportNavItems: NavItem[] = [
-  { label: "Alistamiento", href: "/reportes/alistamiento" },
-  { label: "EFC 01", href: "/reportes/efc/1", badge: "EFC01" },
-  { label: "EFC 02", href: "/reportes/efc/2", badge: "EFC02" },
-  { label: "EFC 03", href: "/reportes/efc/3", badge: "EFC03" },
-  { label: "Consultas de usuarios", href: "/reportes/consultas-usuarios" },
-  { label: "Inglés", href: "/reportes/ingles" },
-  { label: "Institucionales", href: "/reportes/institucionales" },
+  { label: "Alistamiento", href: "/reportes/alistamiento", shortLabel: "AL" },
+  { label: "EFC 01", href: "/reportes/efc/1", badge: "EFC01", shortLabel: "E1" },
+  { label: "EFC 02", href: "/reportes/efc/2", badge: "EFC02", shortLabel: "E2" },
+  { label: "EFC 03", href: "/reportes/efc/3", badge: "EFC03", shortLabel: "E3" },
+  { label: "Consultas de usuarios", href: "/reportes/consultas-usuarios", shortLabel: "CU" },
+  { label: "Inglés", href: "/reportes/ingles", shortLabel: "IN" },
+  { label: "Institucionales", href: "/reportes/institucionales", shortLabel: "IT" },
 ];
 
 const adminNavItems: NavItem[] = [
-  { label: "Configuración BD", href: "/configuracion/bd" },
-  { label: "Consola SQL", href: "/utilidades/sql-console" },
+  { label: "Configuración BD", href: "/configuracion/bd", shortLabel: "BD" },
+  { label: "Consola SQL", href: "/utilidades/sql-console", shortLabel: "SQL" },
 ];
 
 function NavLink({ item, collapsed = false }: { item: NavItem; collapsed?: boolean }) {
   const pathname = usePathname();
   const isActive = pathname === item.href;
-  const compactLabel = getCompactLabel(item.label);
+  const compactLabel = item.shortLabel ?? getCompactLabel(item.label);
 
   return (
     <Link
@@ -55,7 +56,7 @@ function NavLink({ item, collapsed = false }: { item: NavItem; collapsed?: boole
           : "text-sidebar-foreground/80 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground",
       )}
     >
-      {collapsed ? <span className="text-[11px] font-semibold tracking-wide">{compactLabel}</span> : <span>{item.label}</span>}
+      {collapsed ? <span className="text-[11px] font-semibold tracking-wide uppercase">{compactLabel}</span> : <span>{item.label}</span>}
       {!collapsed && item.badge ? (
         <span
           className={cn(
@@ -84,7 +85,7 @@ function DesktopSidebar({
     <aside
       className={cn(
         "hidden shrink-0 flex-col gap-0 border-r border-sidebar-border bg-sidebar transition-[width] duration-200 lg:fixed lg:inset-y-0 lg:left-0 lg:z-30 lg:flex",
-        collapsed ? "w-16" : "w-60",
+        collapsed ? "w-20" : "w-60",
       )}
     >
       <div className="flex items-center justify-end border-b border-sidebar-border px-2 py-2">
@@ -272,7 +273,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         onToggle={() => setDesktopCollapsed((prev) => !prev)}
       />
       <MobileSidebar open={mobileOpen} onClose={() => setMobileOpen(false)} />
-      <div className={cn("flex min-w-0 flex-1 flex-col transition-[padding] duration-200", desktopCollapsed ? "lg:pl-16" : "lg:pl-60")}>
+      <div className={cn("flex min-w-0 flex-1 flex-col transition-[padding] duration-200", desktopCollapsed ? "lg:pl-20" : "lg:pl-60")}>
         <AppTopbar onMenuOpen={() => setMobileOpen(true)} />
         <main className="flex-1">{children}</main>
       </div>
