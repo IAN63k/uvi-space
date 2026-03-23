@@ -81,7 +81,14 @@ type ColumnKey =
   | "horario"
   | "fotografia"
   | "foroConsulta"
-  | "unidades"
+  | "unidad1"
+  | "unidad2"
+  | "unidad3"
+  | "unidad4"
+  | "unidad5"
+  | "unidad6"
+  | "unidad7"
+  | "unidad8"
   | "efc01Act"
   | "efc01Pond"
   | "efc02Act"
@@ -105,7 +112,14 @@ const columnLabels: Record<ColumnKey, string> = {
   horario: "Horario",
   fotografia: "Foto",
   foroConsulta: "Foro consulta",
-  unidades: "Unidades (1-8)",
+  unidad1: "Unidad 1",
+  unidad2: "Unidad 2",
+  unidad3: "Unidad 3",
+  unidad4: "Unidad 4",
+  unidad5: "Unidad 5",
+  unidad6: "Unidad 6",
+  unidad7: "Unidad 7",
+  unidad8: "Unidad 8",
   efc01Act: "EFC01 Act.",
   efc01Pond: "EFC01 Pond.",
   efc02Act: "EFC02 Act.",
@@ -130,7 +144,14 @@ const allColumns: ColumnKey[] = [
   "horario",
   "fotografia",
   "foroConsulta",
-  "unidades",
+  "unidad1",
+  "unidad2",
+  "unidad3",
+  "unidad4",
+  "unidad5",
+  "unidad6",
+  "unidad7",
+  "unidad8",
   "efc01Act",
   "efc01Pond",
   "efc02Act",
@@ -170,7 +191,14 @@ export default function AlistamientoPage() {
     horario: true,
     fotografia: true,
     foroConsulta: true,
-    unidades: true,
+    unidad1: true,
+    unidad2: true,
+    unidad3: true,
+    unidad4: true,
+    unidad5: true,
+    unidad6: true,
+    unidad7: true,
+    unidad8: true,
     efc01Act: true,
     efc01Pond: true,
     efc02Act: true,
@@ -324,7 +352,9 @@ export default function AlistamientoPage() {
         case "codigo":
           return row.courseCode;
         case "docentes":
-          return `${row.teacherNames}${row.teacherEmails ? ` | ${row.teacherEmails}` : ""}`;
+          return row.teacherNames;
+        case "correo":
+          return row.teacherEmails;
         case "nombreProfesor":
           return row.nombreProfesor;
         case "correo":
@@ -335,8 +365,22 @@ export default function AlistamientoPage() {
           return row.fotografia;
         case "foroConsulta":
           return row.foroConsulta;
-        case "unidades":
-          return row.unidades.map((status, index) => `U${index + 1}:${status}`).join(" | ");
+        case "unidad1":
+          return row.unidades[0] ?? "NO APLICA";
+        case "unidad2":
+          return row.unidades[1] ?? "NO APLICA";
+        case "unidad3":
+          return row.unidades[2] ?? "NO APLICA";
+        case "unidad4":
+          return row.unidades[3] ?? "NO APLICA";
+        case "unidad5":
+          return row.unidades[4] ?? "NO APLICA";
+        case "unidad6":
+          return row.unidades[5] ?? "NO APLICA";
+        case "unidad7":
+          return row.unidades[6] ?? "NO APLICA";
+        case "unidad8":
+          return row.unidades[7] ?? "NO APLICA";
         case "efc01Act":
           return row.efc01Actividades;
         case "efc01Pond":
@@ -814,7 +858,14 @@ export default function AlistamientoPage() {
                         {visibleColumns.horario ? <th className="px-3 py-2 text-left font-medium">Horario</th> : null}
                         {visibleColumns.fotografia ? <th className="px-3 py-2 text-left font-medium">Foto</th> : null}
                         {visibleColumns.foroConsulta ? <th className="px-3 py-2 text-left font-medium">Foro consulta</th> : null}
-                        {visibleColumns.unidades ? <th className="px-3 py-2 text-left font-medium">Unidades (1-8)</th> : null}
+                        {visibleColumns.unidad1 ? <th className="px-3 py-2 text-left font-medium">Unidad 1</th> : null}
+                        {visibleColumns.unidad2 ? <th className="px-3 py-2 text-left font-medium">Unidad 2</th> : null}
+                        {visibleColumns.unidad3 ? <th className="px-3 py-2 text-left font-medium">Unidad 3</th> : null}
+                        {visibleColumns.unidad4 ? <th className="px-3 py-2 text-left font-medium">Unidad 4</th> : null}
+                        {visibleColumns.unidad5 ? <th className="px-3 py-2 text-left font-medium">Unidad 5</th> : null}
+                        {visibleColumns.unidad6 ? <th className="px-3 py-2 text-left font-medium">Unidad 6</th> : null}
+                        {visibleColumns.unidad7 ? <th className="px-3 py-2 text-left font-medium">Unidad 7</th> : null}
+                        {visibleColumns.unidad8 ? <th className="px-3 py-2 text-left font-medium">Unidad 8</th> : null}
                         {visibleColumns.efc01Act ? <th className="px-3 py-2 text-left font-medium">EFC01 Act.</th> : null}
                         {visibleColumns.efc01Pond ? <th className="px-3 py-2 text-left font-medium">EFC01 Pond.</th> : null}
                         {visibleColumns.efc02Act ? <th className="px-3 py-2 text-left font-medium">EFC02 Act.</th> : null}
@@ -848,17 +899,14 @@ export default function AlistamientoPage() {
                           {visibleColumns.horario ? <td className="px-3 py-2"><span className={`rounded px-2 py-1 text-xs font-medium ${getStatusClass(item.horarioAtencion)}`}>{item.horarioAtencion}</span></td> : null}
                           {visibleColumns.fotografia ? <td className="px-3 py-2"><span className={`rounded px-2 py-1 text-xs font-medium ${getStatusClass(item.fotografia)}`}>{item.fotografia}</span></td> : null}
                           {visibleColumns.foroConsulta ? <td className="px-3 py-2"><span className={`rounded px-2 py-1 text-xs font-medium ${getStatusClass(item.foroConsulta)}`}>{item.foroConsulta}</span></td> : null}
-                          {visibleColumns.unidades ? (
-                            <td className="px-3 py-2">
-                              <div className="flex flex-wrap gap-1">
-                                {item.unidades.map((status, index) => (
-                                  <span key={`${item.courseId}-u-${index + 1}`} className={`rounded px-2 py-0.5 text-[11px] font-medium ${getStatusClass(status)}`}>
-                                    U{index + 1}
-                                  </span>
-                                ))}
-                              </div>
-                            </td>
-                          ) : null}
+                          {visibleColumns.unidad1 ? <td className="px-3 py-2"><span className={`rounded px-2 py-1 text-xs font-medium ${getStatusClass(item.unidades[0] ?? "NO APLICA")}`}>{item.unidades[0] ?? "NO APLICA"}</span></td> : null}
+                          {visibleColumns.unidad2 ? <td className="px-3 py-2"><span className={`rounded px-2 py-1 text-xs font-medium ${getStatusClass(item.unidades[1] ?? "NO APLICA")}`}>{item.unidades[1] ?? "NO APLICA"}</span></td> : null}
+                          {visibleColumns.unidad3 ? <td className="px-3 py-2"><span className={`rounded px-2 py-1 text-xs font-medium ${getStatusClass(item.unidades[2] ?? "NO APLICA")}`}>{item.unidades[2] ?? "NO APLICA"}</span></td> : null}
+                          {visibleColumns.unidad4 ? <td className="px-3 py-2"><span className={`rounded px-2 py-1 text-xs font-medium ${getStatusClass(item.unidades[3] ?? "NO APLICA")}`}>{item.unidades[3] ?? "NO APLICA"}</span></td> : null}
+                          {visibleColumns.unidad5 ? <td className="px-3 py-2"><span className={`rounded px-2 py-1 text-xs font-medium ${getStatusClass(item.unidades[4] ?? "NO APLICA")}`}>{item.unidades[4] ?? "NO APLICA"}</span></td> : null}
+                          {visibleColumns.unidad6 ? <td className="px-3 py-2"><span className={`rounded px-2 py-1 text-xs font-medium ${getStatusClass(item.unidades[5] ?? "NO APLICA")}`}>{item.unidades[5] ?? "NO APLICA"}</span></td> : null}
+                          {visibleColumns.unidad7 ? <td className="px-3 py-2"><span className={`rounded px-2 py-1 text-xs font-medium ${getStatusClass(item.unidades[6] ?? "NO APLICA")}`}>{item.unidades[6] ?? "NO APLICA"}</span></td> : null}
+                          {visibleColumns.unidad8 ? <td className="px-3 py-2"><span className={`rounded px-2 py-1 text-xs font-medium ${getStatusClass(item.unidades[7] ?? "NO APLICA")}`}>{item.unidades[7] ?? "NO APLICA"}</span></td> : null}
                           {visibleColumns.efc01Act ? <td className="px-3 py-2"><span className={`rounded px-2 py-1 text-xs font-medium ${getStatusClass(item.efc01Actividades)}`}>{item.efc01Actividades}</span></td> : null}
                           {visibleColumns.efc01Pond ? <td className="px-3 py-2"><span className={`rounded px-2 py-1 text-xs font-medium ${getStatusClass(item.efc01Ponderaciones)}`}>{item.efc01Ponderaciones}</span></td> : null}
                           {visibleColumns.efc02Act ? <td className="px-3 py-2"><span className={`rounded px-2 py-1 text-xs font-medium ${getStatusClass(item.efc02Actividades)}`}>{item.efc02Actividades}</span></td> : null}
