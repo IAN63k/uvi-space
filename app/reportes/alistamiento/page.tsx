@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import { Trash2 } from "lucide-react";
 
+import { ReportTableControls } from "@/components/report-table-controls";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -714,87 +715,80 @@ export default function AlistamientoPage() {
                 </p>
               ) : (
                 <>
-                  <div className="rounded-lg border p-3">
-                    <div className="grid gap-3 lg:grid-cols-4">
-                      <div className="space-y-1 lg:col-span-2">
-                        <Label htmlFor="searchTable">Buscar</Label>
-                        <input
-                          id="searchTable"
-                          type="text"
-                          value={searchText}
-                          onChange={(event) => setSearchText(event.target.value)}
-                          placeholder="Curso, programa, docente, código..."
-                          className="flex h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm shadow-xs transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                        />
-                      </div>
+                  <ReportTableControls
+                    filters={(
+                      <div className="grid gap-3 lg:grid-cols-4">
+                        <div className="space-y-1 lg:col-span-2">
+                          <Label htmlFor="searchTable">Buscar</Label>
+                          <input
+                            id="searchTable"
+                            type="text"
+                            value={searchText}
+                            onChange={(event) => setSearchText(event.target.value)}
+                            placeholder="Curso, programa, docente, código..."
+                            className="flex h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm shadow-xs transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                          />
+                        </div>
 
-                      <div className="space-y-1">
-                        <Label htmlFor="statusFilter">Filtro por estado</Label>
-                        {/* eslint-disable-next-line jsx-a11y/no-onchange */}
-                        <select
-                          id="statusFilter"
-                          value={statusFilter}
-                          onChange={(event) => setStatusFilter(event.target.value as "all" | Status)}
-                          className="flex h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm shadow-xs transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                        >
-                          <option value="all">Todos</option>
-                          <option value="CUMPLE">CUMPLE</option>
-                          <option value="NO CUMPLE">NO CUMPLE</option>
-                          <option value="NO APLICA">NO APLICA</option>
-                          <option value="NO EXISTE">NO EXISTE</option>
-                        </select>
-                      </div>
+                        <div className="space-y-1">
+                          <Label htmlFor="statusFilter">Filtro por estado</Label>
+                          {/* eslint-disable-next-line jsx-a11y/no-onchange */}
+                          <select
+                            id="statusFilter"
+                            value={statusFilter}
+                            onChange={(event) => setStatusFilter(event.target.value as "all" | Status)}
+                            className="flex h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm shadow-xs transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                          >
+                            <option value="all">Todos</option>
+                            <option value="CUMPLE">CUMPLE</option>
+                            <option value="NO CUMPLE">NO CUMPLE</option>
+                            <option value="NO APLICA">NO APLICA</option>
+                            <option value="NO EXISTE">NO EXISTE</option>
+                          </select>
+                        </div>
 
-                      <div className="space-y-1">
-                        <Label htmlFor="percentFilter">Filtro porcentaje</Label>
-                        {/* eslint-disable-next-line jsx-a11y/no-onchange */}
-                        <select
-                          id="percentFilter"
-                          value={percentFilter}
-                          onChange={(event) => setPercentFilter(event.target.value as "all" | "high" | "medium" | "low" | "noActivity")}
-                          className="flex h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm shadow-xs transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                        >
-                          <option value="all">Todos</option>
-                          <option value="high">80-100</option>
-                          <option value="medium">51-79</option>
-                          <option value="low">1-50</option>
-                          <option value="noActivity">0</option>
-                        </select>
+                        <div className="space-y-1">
+                          <Label htmlFor="percentFilter">Filtro porcentaje</Label>
+                          {/* eslint-disable-next-line jsx-a11y/no-onchange */}
+                          <select
+                            id="percentFilter"
+                            value={percentFilter}
+                            onChange={(event) =>
+                              setPercentFilter(event.target.value as "all" | "high" | "medium" | "low" | "noActivity")
+                            }
+                            className="flex h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm shadow-xs transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                          >
+                            <option value="all">Todos</option>
+                            <option value="high">80-100</option>
+                            <option value="medium">51-79</option>
+                            <option value="low">1-50</option>
+                            <option value="noActivity">0</option>
+                          </select>
+                        </div>
                       </div>
-                    </div>
-
-                    <div className="mt-3 flex flex-wrap items-center justify-between gap-3">
-                      <p className="text-xs text-muted-foreground">
-                        Mostrando {filteredResults.length} de {payload.results.length} cursos · {visibleColumnCount} columnas visibles
-                      </p>
-                      <div className="flex flex-wrap items-center gap-2">
-                        <details className="relative">
-                          <summary className="cursor-pointer rounded-md border border-input px-3 py-1.5 text-sm hover:bg-accent hover:text-accent-foreground">
-                            Ocultar/mostrar columnas
-                          </summary>
-                          <div className="absolute right-0 z-20 mt-2 max-h-80 w-64 overflow-auto rounded-md border bg-popover p-2 shadow-lg">
-                            {allColumns.map((column) => (
-                              <label key={column} className="flex items-center gap-2 rounded px-2 py-1 text-sm hover:bg-accent">
-                                <input
-                                  type="checkbox"
-                                  checked={visibleColumns[column]}
-                                  onChange={() => toggleColumn(column)}
-                                />
-                                <span>{columnLabels[column]}</span>
-                              </label>
-                            ))}
-                          </div>
-                        </details>
-
-                        <Button type="button" variant="outline" onClick={resetFilters}>
-                          Limpiar filtros
-                        </Button>
-                        <Button type="button" onClick={downloadCsv} disabled={filteredResults.length === 0 || visibleColumnCount === 0}>
-                          Descargar CSV
-                        </Button>
-                      </div>
-                    </div>
-                  </div>
+                    )}
+                    columns={
+                      <>
+                        {allColumns.map((column) => (
+                          <label key={column} className="flex items-center gap-2 rounded px-2 py-1 text-sm hover:bg-accent">
+                            <input
+                              type="checkbox"
+                              checked={visibleColumns[column]}
+                              onChange={() => toggleColumn(column)}
+                            />
+                            <span>{columnLabels[column]}</span>
+                          </label>
+                        ))}
+                      </>
+                    }
+                    filteredCount={filteredResults.length}
+                    totalCount={payload.results.length}
+                    visibleCount={visibleColumnCount}
+                    onResetFilters={resetFilters}
+                    onDownloadCsv={downloadCsv}
+                    disableDownload={filteredResults.length === 0 || visibleColumnCount === 0}
+                    columnsPanelClassName="w-64"
+                  />
 
                   <div className="overflow-x-auto rounded-lg border">
                     <table className="min-w-475 text-sm">
