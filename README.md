@@ -1,8 +1,35 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+## UVI Space (Migración de Informes Moodle)
 
-## Getting Started
+Base inicial para migrar la aplicación PHP de reportes Moodle a Next.js + `shadcn/ui`.
 
-First, run the development server:
+### Estado actual
+
+- Repositorio central de utilidades en `/`
+- Módulos de reportes creados como rutas de App Router:
+	- `/reportes/alistamiento`
+	- `/reportes/efc/1`, `/reportes/efc/2`, `/reportes/efc/3`
+	- `/reportes/consultas-usuarios`
+	- `/reportes/ingles`
+	- `/reportes/institucionales`
+- Utilidad base para futura consola SQL en `/utilidades/sql-console`
+- Configuración de conexión BD con almacenamiento local cifrado en `/configuracion/bd`
+
+### Módulo conectado (fase 1)
+
+- `Alistamiento` ya consulta datos reales mediante `POST /api/reportes/alistamiento`
+- Entrada actual: `categoryId` (ID de categoría Moodle)
+- Salida actual: cursos de la categoría + docentes asociados (rol 3)
+
+### Stack
+
+- Next.js 16 (App Router)
+- React 19
+- Tailwind CSS v4
+- `shadcn/ui` (estilo `base-nova`)
+
+## Desarrollo
+
+Ejecuta el servidor de desarrollo:
 
 ```bash
 npm run dev
@@ -14,23 +41,19 @@ pnpm dev
 bun dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+Abre [http://localhost:3000](http://localhost:3000) para ver la aplicación.
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+### Nota de seguridad
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+La configuración de base de datos se cifra en `localStorage` del navegador para uso local del operador. Esto no reemplaza un backend seguro con secretos en servidor; es un paso de transición para esta fase de migración.
 
-## Learn More
+## Siguientes pasos de migración
 
-To learn more about Next.js, take a look at the following resources:
+- Crear API Routes para reemplazar `services/reportRequest.php`
+- Implementar conexión server-side a MySQL usando variables de entorno del servidor
+- Migrar tablas DataTables y exportación de reportes
+- Agregar autenticación/autorización para utilidades críticas (ej. consola SQL)
+
+## Referencias
 
 - [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
-
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
-
-## Deploy on Vercel
-
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
