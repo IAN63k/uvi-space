@@ -233,7 +233,7 @@ const feedbackActivity = async (connection: mysql.Connection, assignmentId: numb
 };
 
 const toModule = (moduleName: string | null): EfcActivityResult["module"] => {
-  if (moduleName === "forum" || moduleName === "assign" || moduleName === "quiz") {
+  if (moduleName === "forum" || moduleName === "assign" || moduleName === "quiz" || moduleName === "h5pactivity") {
     return moduleName;
   }
 
@@ -274,6 +274,20 @@ const computeScoreAndFeedback = async (
     else counter.noCumple += 1;
 
     return { name, module, score, feedback };
+  }
+
+  if (module === "h5pactivity") {
+    const score = await scoreItem(connection, item.id);
+
+    if (score === REPORT_STATUS.success) counter.cumple += 1;
+    else counter.noCumple += 1;
+
+    return {
+      name,
+      module: "h5pactivity",
+      score,
+      feedback: REPORT_STATUS.notApply,
+    };
   }
 
   if (module === "quiz") {

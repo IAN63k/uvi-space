@@ -1,0 +1,7 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(find \"C:\\\\xampp\\\\htdocs\\\\Informes\\\\uvi-space\" -name \".env*\" -o -name \".cursorrules\" -o -name \".cursor\" -type f 2>/dev/null | head -20)"
+    ]
+  }
+}

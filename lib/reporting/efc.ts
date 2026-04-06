@@ -39,7 +39,7 @@ export function getEfcDefinition(level: string): EfcDefinition | null {
 
 export type EfcActivityResult = {
   name: string;
-  module: "forum" | "assign" | "quiz" | "other";
+  module: "forum" | "assign" | "quiz" | "h5pactivity" | "other";
   score: ReportStatus;
   feedback: ReportStatus;
 };

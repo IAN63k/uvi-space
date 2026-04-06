@@ -346,6 +346,8 @@ export default function AlistamientoPage() {
           return row.program;
         case "semestre":
           return row.semester;
+        case "grupo":
+          return row.group;
         case "idCurso":
           return row.courseId;
         case "curso":
@@ -354,8 +356,6 @@ export default function AlistamientoPage() {
           return row.courseCode;
         case "docentes":
           return row.teacherNames;
-        case "correo":
-          return row.teacherEmails;
         case "nombreProfesor":
           return row.nombreProfesor;
         case "correo":
