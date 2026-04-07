@@ -102,3 +102,49 @@ export async function loadEncryptedDbConfig() {
 export function clearEncryptedDbConfig() {
   localStorage.removeItem(STORAGE_KEY);
 }
+
+// ── Moodle config (token + URL) ──────────────────────────────────────────────
+
+const MOODLE_CONFIG_KEY = "uvi-space.moodle-config.v1";
+
+export interface MoodleConfig {
+  token: string;
+  moodleUrl: string;
+}
+
+export async function saveMoodleConfig(config: MoodleConfig): Promise<void> {
+  const payload = JSON.stringify(config);
+  const encryptedPayload = await encrypt(payload);
+  localStorage.setItem(MOODLE_CONFIG_KEY, encryptedPayload);
+}
+
+export async function loadMoodleConfig(): Promise<MoodleConfig | null> {
+  const encryptedPayload = localStorage.getItem(MOODLE_CONFIG_KEY);
+  if (!encryptedPayload) return null;
+  const payload = await decrypt(encryptedPayload);
+  return JSON.parse(payload) as MoodleConfig;
+}
+
+export function clearMoodleConfig(): void {
+  localStorage.removeItem(MOODLE_CONFIG_KEY);
+}
+
+// ── Generic encrypted JSON storage ───────────────────────────────────────────
+// Used for any key-value pair that needs to be stored securely in localStorage.
+// The key is passed directly (caller is responsible for namespacing).
+
+export async function saveEncryptedJson(key: string, value: unknown): Promise<void> {
+  const encryptedPayload = await encrypt(JSON.stringify(value));
+  localStorage.setItem(key, encryptedPayload);
+}
+
+export async function loadEncryptedJson<T>(key: string): Promise<T | null> {
+  const encryptedPayload = localStorage.getItem(key);
+  if (!encryptedPayload) return null;
+  const payload = await decrypt(encryptedPayload);
+  return JSON.parse(payload) as T;
+}
+
+export function clearEncryptedJson(key: string): void {
+  localStorage.removeItem(key);
+}
