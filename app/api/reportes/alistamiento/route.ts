@@ -3,6 +3,7 @@ import mysql from "mysql2/promise";
 import type { RowDataPacket } from "mysql2";
 
 import type { DatabaseConfig } from "@/lib/database-config";
+import { sanitizeDbConfig } from "@/lib/reporting/db-config";
 
 type AlistamientoRequest = {
   categoryId: number;
@@ -218,19 +219,6 @@ const validarPonderacionCategoria = (state: CounterState, weighingGrade: number,
   }
 
   return mark(state, false);
-}
-
-const sanitizeDbConfig = (config: Partial<DatabaseConfig>): DatabaseConfig | null => {
-  if (!config.server || !config.user || !config.password || !config.database) {
-    return null;
-  }
-
-  return {
-    server: String(config.server).trim(),
-    user: String(config.user).trim(),
-    password: String(config.password),
-    database: String(config.database).trim(),
-  };
 }
 
 const getPrograms = async (connection: mysql.Connection, mainCategoryId: number) => {
