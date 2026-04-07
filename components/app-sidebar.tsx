@@ -2,15 +2,16 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 import { cn } from "@/lib/utils";
 
 type NavItem = {
   label: string;
-  href: string;
+  href?: string;
   badge?: string;
   shortLabel?: string;
+  children?: { label: string; href: string }[];
 };
 
 const SIDEBAR_COLLAPSED_STORAGE_KEY = "uvi-space.sidebar.collapsed.v1";
@@ -29,25 +30,121 @@ const reportNavItems: NavItem[] = [
   { label: "EFC 01", href: "/reportes/efc/1", badge: "EFC01", shortLabel: "E1" },
   { label: "EFC 02", href: "/reportes/efc/2", badge: "EFC02", shortLabel: "E2" },
   { label: "EFC 03", href: "/reportes/efc/3", badge: "EFC03", shortLabel: "E3" },
+  {
+    label: "Revisión de cursos",
+    shortLabel: "RC",
+    children: [
+      { label: "Configuración general", href: "/reportes/revision-cursos" },
+      { label: "Configuración de contenido", href: "/reportes/revision-cursos/contenido" },
+    ],
+  },
   { label: "Consultas de usuarios", href: "/reportes/consultas-usuarios", shortLabel: "CU" },
   { label: "Inglés", href: "/reportes/ingles", shortLabel: "IN" },
   { label: "Institucionales", href: "/reportes/institucionales", shortLabel: "IT" },
 ];
 
 const adminNavItems: NavItem[] = [
+  { label: "Ajustes", href: "/configuracion/ajustes", shortLabel: "AJ" },
   { label: "Configuración BD", href: "/configuracion/bd", shortLabel: "BD" },
   { label: "Consola SQL", href: "/utilidades/sql-console", shortLabel: "SQL" },
 ];
 
-function NavLink({ item, collapsed = false }: { item: NavItem; collapsed?: boolean }) {
+function NavLink({ item, collapsed = false, onLinkClick }: { item: NavItem; collapsed?: boolean; onLinkClick?: () => void }) {
   const pathname = usePathname();
-  const isActive = pathname === item.href;
   const compactLabel = item.shortLabel ?? getCompactLabel(item.label);
 
+  // Item with children — collapsible group
+  if (item.children) {
+    const isGroupActive = item.children.some((c) => pathname === c.href || pathname.startsWith(c.href + "/"));
+    // Auto-open if a child is active; persist open state
+    const [open, setOpen] = useState(isGroupActive);
+    const didMount = useRef(false);
+    useEffect(() => {
+      if (!didMount.current) { didMount.current = true; return; }
+    }, []);
+
+    if (collapsed) {
+      // In collapsed mode show compact label linking to first child
+      const firstHref = item.children[0]?.href ?? "#";
+      return (
+        <Link
+          href={firstHref}
+          title={item.label}
+          onClick={onLinkClick}
+          className={cn(
+            "flex items-center justify-center rounded-md px-3 py-2 text-sm transition-colors",
+            isGroupActive
+              ? "bg-sidebar-primary text-sidebar-primary-foreground font-medium"
+              : "text-sidebar-foreground/80 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground",
+          )}
+        >
+          <span className="text-[11px] font-semibold tracking-wide uppercase">{compactLabel}</span>
+        </Link>
+      );
+    }
+
+    return (
+      <div>
+        <button
+          type="button"
+          onClick={() => setOpen((v) => !v)}
+          className={cn(
+            "group flex w-full items-center justify-between rounded-md px-3 py-2 text-sm transition-colors",
+            isGroupActive
+              ? "text-sidebar-foreground font-medium"
+              : "text-sidebar-foreground/80 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground",
+          )}
+        >
+          <span>{item.label}</span>
+          <svg
+            xmlns="http://www.w3.org/2000/svg"
+            width="12"
+            height="12"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="2.5"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            className={cn("text-sidebar-foreground/40 transition-transform duration-150", open && "rotate-180")}
+          >
+            <path d="m6 9 6 6 6-6" />
+          </svg>
+        </button>
+        {open && (
+          <ul className="ml-3 mt-0.5 space-y-0.5 border-l border-sidebar-border pl-3">
+            {item.children.map((child) => {
+              const isActive = pathname === child.href;
+              return (
+                <li key={child.href}>
+                  <Link
+                    href={child.href}
+                    onClick={onLinkClick}
+                    className={cn(
+                      "block rounded-md px-2 py-1.5 text-sm transition-colors",
+                      isActive
+                        ? "bg-sidebar-primary text-sidebar-primary-foreground font-medium"
+                        : "text-sidebar-foreground/70 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground",
+                    )}
+                  >
+                    {child.label}
+                  </Link>
+                </li>
+              );
+            })}
+          </ul>
+        )}
+      </div>
+    );
+  }
+
+  // Simple item
+  const isActive = pathname === item.href;
   return (
     <Link
-      href={item.href}
+      href={item.href ?? "#"}
       title={collapsed ? item.label : undefined}
+      onClick={onLinkClick}
       className={cn(
         "group flex items-center rounded-md px-3 py-2 text-sm transition-colors",
         collapsed ? "justify-center" : "justify-between",
@@ -179,8 +276,8 @@ function SidebarContent({
         ) : null}
         <ul className="space-y-0.5">
           {reportNavItems.map((item) => (
-            <li key={item.href} onClick={onLinkClick}>
-              <NavLink item={item} collapsed={collapsed} />
+            <li key={item.href ?? item.label}>
+              <NavLink item={item} collapsed={collapsed} onLinkClick={onLinkClick} />
             </li>
           ))}
         </ul>
@@ -197,8 +294,8 @@ function SidebarContent({
         ) : null}
         <ul className="space-y-0.5">
           {adminNavItems.map((item) => (
-            <li key={item.href} onClick={onLinkClick}>
-              <NavLink item={item} collapsed={collapsed} />
+            <li key={item.href ?? item.label}>
+              <NavLink item={item} collapsed={collapsed} onLinkClick={onLinkClick} />
             </li>
           ))}
         </ul>

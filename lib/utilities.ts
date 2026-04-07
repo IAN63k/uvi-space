@@ -34,6 +34,12 @@ export const reportUtilities: UtilityItem[] = [
     badge: "EFC03",
   },
   {
+    title: "Revisión de cursos",
+    description:
+      "Valida la configuración de cursos en Moodle vía API REST: formato, visibilidad, completitud y tamaño máximo.",
+    href: "/reportes/revision-cursos",
+  },
+  {
     title: "Consultas de usuarios",
     description: "Consulta de usuarios y métricas operativas relacionadas.",
     href: "/reportes/consultas-usuarios",
@@ -52,6 +58,12 @@ export const reportUtilities: UtilityItem[] = [
 ];
 
 export const adminUtilities: UtilityItem[] = [
+  {
+    title: "Ajustes del sistema",
+    description:
+      "Token de Moodle API y reglas de validación por función. Configuración cifrada en el navegador.",
+    href: "/configuracion/ajustes",
+  },
   {
     title: "Configuración de base de datos",
     description:
