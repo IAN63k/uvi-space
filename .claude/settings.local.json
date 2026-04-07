@@ -1,0 +1,11 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(find \"C:\\\\xampp\\\\htdocs\\\\Informes\\\\uvi-space\" -name \".env*\" -o -name \".cursorrules\" -o -name \".cursor\" -type f 2>/dev/null | head -20)",
+      "Bash(cd \"C:\\\\xampp\\\\htdocs\\\\Informes\\\\uvi-space\" && npx tsc --noEmit 2>&1 | head -60)",
+      "Bash(cd \"C:\\\\xampp\\\\htdocs\\\\Informes\\\\uvi-space\" && npx tsc --noEmit 2>&1 | grep -v \"alistamiento/page.tsx\")",
+      "Bash(curl -s -o /dev/null -w \"%{http_code} %{time_total}s\" \"https://aulasvirtuales.unicamacho.edu.co/webservice/rest/server.php?wstoken=INVALID&moodlewsrestformat=json&wsfunction=core_webservice_get_site_info\" 2>&1)",
+      "Bash(cd \"C:\\\\xampp\\\\htdocs\\\\Informes\\\\uvi-space\" && npm install axios 2>&1 | tail -5)"
+    ]
+  }
+}
