@@ -3,24 +3,13 @@ import mysql from "mysql2/promise";
 import type { RowDataPacket } from "mysql2";
 
 import type { DatabaseConfig } from "@/lib/database-config";
+import { sanitizeDbConfig } from "@/lib/reporting/db-config";
 
 type CategoryRow = RowDataPacket & {
   id: number;
   name: string;
   coursecount: number;
 };
-
-function sanitizeDbConfig(config: Partial<DatabaseConfig>): DatabaseConfig | null {
-  if (!config.server || !config.user || !config.password || !config.database) {
-    return null;
-  }
-  return {
-    server: String(config.server).trim(),
-    user: String(config.user).trim(),
-    password: String(config.password),
-    database: String(config.database).trim(),
-  };
-}
 
 export async function POST(request: NextRequest) {
   let connection: mysql.Connection | null = null;
