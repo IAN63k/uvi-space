@@ -129,12 +129,78 @@ function resolveCourseImage(course: MoodleCourse, token: string): string | undef
   return undefined;
 }
 
+/** Converts a date string "YYYY-MM-DD" to a Unix timestamp (seconds) */
+function dateStringToTimestamp(value: string | number): number {
+  if (typeof value === "number") return value;
+  const ts = Math.floor(new Date(value).getTime() / 1000);
+  return isNaN(ts) ? 0 : ts;
+}
+
 export function validateCourse(course: MoodleCourse, rules: ValidationRules): CourseError[] {
   const errors: CourseError[] = [];
 
-  for (const [field, expected] of Object.entries(rules) as [keyof ValidationRules, string | number][]) {
-    const actual = course[field as keyof MoodleCourse];
-    if (actual !== expected) {
+  for (const [field, expected] of Object.entries(rules)) {
+    // ── Validaciones sintéticas de contenido ────────────────────────────────
+    if (field === "fullname_contains") {
+      const text = String(expected).trim().toLowerCase();
+      if (text && !course.fullname.toLowerCase().includes(text)) {
+        errors.push({ field, expected, actual: course.fullname });
+      }
+      continue;
+    }
+
+    // ── Validaciones sintéticas de existencia ───────────────────────────────
+    if (field === "shortname_exists") {
+      if (!course.shortname?.trim()) {
+        errors.push({ field, expected, actual: course.shortname ?? "" });
+      }
+      continue;
+    }
+    if (field === "idnumber_exists") {
+      if (!course.idnumber?.trim()) {
+        errors.push({ field, expected, actual: course.idnumber ?? "" });
+      }
+      continue;
+    }
+    if (field === "startdate_exists") {
+      if (!course.startdate || course.startdate === 0) {
+        errors.push({ field, expected, actual: course.startdate ?? 0 });
+      }
+      continue;
+    }
+    if (field === "enddate_exists") {
+      if (!course.enddate || course.enddate === 0) {
+        errors.push({ field, expected, actual: course.enddate ?? 0 });
+      }
+      continue;
+    }
+
+    // ── Validaciones sintéticas de rango de fechas ──────────────────────────
+    if (field === "startdate_min") {
+      const minTs = dateStringToTimestamp(expected as string | number);
+      if (!course.startdate || course.startdate < minTs) {
+        errors.push({ field, expected, actual: course.startdate ?? 0 });
+      }
+      continue;
+    }
+    if (field === "enddate_max") {
+      const maxTs = dateStringToTimestamp(expected as string | number);
+      if (!course.enddate || course.enddate > maxTs) {
+        errors.push({ field, expected, actual: course.enddate ?? 0 });
+      }
+      continue;
+    }
+
+    // ── Validaciones de igualdad (campos estándar) ───────────────────────────
+    // Moodle puede devolver campos como boolean (true/false) o como número (1/0) dependiendo
+    // de la versión. Normalizamos ambos lados a número para hacer la comparación correcta.
+    const toNum = (v: unknown): unknown => (v === true ? 1 : v === false ? 0 : v);
+
+    const expectedNorm = typeof expected === "boolean" ? (expected ? 1 : 0) : expected;
+    const actual       = course[field as keyof MoodleCourse];
+    const actualNorm   = toNum(actual);
+
+    if (actualNorm !== expectedNorm) {
       errors.push({ field, expected, actual: actual as string | number | null | undefined });
     }
   }
@@ -225,6 +291,7 @@ export async function runRevision(
       idnumber: course.idnumber ?? "",
       categoryId: course.categoryid,
       categoryName: categoryNameMap.get(course.categoryid) ?? `Categoría ${course.categoryid}`,
+      // Configuración general
       visible: course.visible ?? 0,
       format: course.format,
       maxbytes: course.maxbytes ?? 0,
@@ -232,6 +299,21 @@ export async function runRevision(
       lang: course.lang ?? "",
       startdate: course.startdate,
       enddate: course.enddate,
+      forcetheme: course.forcetheme ?? "",
+      summaryformat: course.summaryformat ?? 0,
+      // Apariencia
+      newsitems: course.newsitems ?? 0,
+      showgrades: course.showgrades ?? 1,
+      showreports: course.showreports ?? 0,
+      showactivitydates: course.showactivitydates ?? 0,
+      showcompletionconditions: course.showcompletionconditions ?? 0,
+      // Grupos
+      groupmode: course.groupmode ?? 0,
+      groupmodeforce: course.groupmodeforce ?? 0,
+      defaultgroupingid: course.defaultgroupingid ?? 0,
+      // Finalización
+      completionnotify: course.completionnotify ?? 0,
+      // Estado
       status: errors.length === 0 ? "OK" : "FAIL",
       errors,
       courseUrl: `${moodleUrl.replace(/\/$/, "")}/course/view.php?id=${course.id}`,
