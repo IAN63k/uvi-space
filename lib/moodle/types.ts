@@ -71,11 +71,11 @@ export interface MoodleCourse {
 }
 
 /** Dynamic set of field → expected-value pairs. Only active fields are included. */
-export type ValidationRules = Record<string, string | number>;
+export type ValidationRules = Record<string, string | number | boolean>;
 
 export interface CourseError {
   field: string;
-  expected: string | number;
+  expected: string | number | boolean;
   actual: string | number | null | undefined;
 }
 
@@ -86,6 +86,7 @@ export interface CourseValidationResult {
   idnumber: string;
   categoryId: number;
   categoryName: string;
+  // ── Configuración general ────────────────────────────────────────────────────
   visible: number;
   format: string;
   maxbytes: number;
@@ -93,6 +94,21 @@ export interface CourseValidationResult {
   lang: string;
   startdate: number;
   enddate: number;
+  forcetheme: string;
+  summaryformat: number;
+  // ── Configuración de apariencia ──────────────────────────────────────────────
+  newsitems: number;
+  showgrades: number;
+  showreports: number;
+  showactivitydates: number;
+  showcompletionconditions: number;
+  // ── Configuración de grupos ──────────────────────────────────────────────────
+  groupmode: number;
+  groupmodeforce: number;
+  defaultgroupingid: number;
+  // ── Finalización ────────────────────────────────────────────────────────────
+  completionnotify: number;
+  // ── Estado de validación ─────────────────────────────────────────────────────
   status: "OK" | "FAIL";
   errors: CourseError[];
   /** Direct URL to the course in Moodle: {moodleUrl}/course/view.php?id={id} */

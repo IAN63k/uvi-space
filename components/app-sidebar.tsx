@@ -44,7 +44,6 @@ const reportNavItems: NavItem[] = [
 ];
 
 const adminNavItems: NavItem[] = [
-  { label: "Ajustes", href: "/configuracion/ajustes", shortLabel: "AJ" },
   { label: "Configuración BD", href: "/configuracion/bd", shortLabel: "BD" },
   { label: "Consola SQL", href: "/utilidades/sql-console", shortLabel: "SQL" },
 ];
