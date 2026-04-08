@@ -1,16 +1,26 @@
 "use client";
 
-import Link from "next/link";
-import { useEffect, useMemo, useState } from "react";
-import { CheckCircle2, XCircle, ChevronRight, ChevronDown, Folder, BookOpen, X, Settings2, ExternalLink } from "lucide-react";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import {
+  CheckCircle2, XCircle, ChevronRight, ChevronDown, Folder, BookOpen,
+  X, Settings2, ExternalLink, AlertTriangle,
+} from "lucide-react";
 
 import { ReportTableControls } from "@/components/report-table-controls";
+import { SettingsSidebar } from "@/components/settings-sidebar";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Label } from "@/components/ui/label";
 import { loadEncryptedJson, loadMoodleConfig } from "@/lib/encrypted-local-storage";
-import { API_FUNCTIONS, buildDefaultRulesConfig, buildValidationRules, localStorageKey, type RulesConfig } from "@/lib/moodle/rules";
+import {
+  API_FUNCTIONS,
+  buildDefaultRulesConfig,
+  buildValidationRules,
+  getFieldLabelFromRules,
+  localStorageKey,
+  type RulesConfig,
+} from "@/lib/moodle/rules";
 import type { CategoryNode, CourseValidationResult, CourseSummary, RevisionCursosResponse } from "@/lib/moodle/types";
 
 // ── Column types ─────────────────────────────────────────────────────────────
@@ -49,22 +59,46 @@ function formatDate(timestamp: number): string {
   return new Date(timestamp * 1000).toLocaleDateString("es-CO", { year: "numeric", month: "short", day: "numeric" });
 }
 
-function getFieldLabel(field: string): string {
-  const labels: Record<string, string> = {
-    visible: "Visible",
-    format: "Formato",
-    maxbytes: "Tamaño máximo",
-    enablecompletion: "Completitud",
-    lang: "Idioma",
-  };
-  return labels[field] ?? field;
+function formatSummaryFormat(v: number): string {
+  const map: Record<number, string> = { 0: "Moodle", 1: "HTML", 2: "Texto plano", 4: "Markdown" };
+  return map[v] ?? String(v);
 }
 
-function formatValue(field: string, value: string | number | null | undefined): string {
+function formatGroupMode(v: number): string {
+  const map: Record<number, string> = { 0: "Sin grupos", 1: "Grupos separados", 2: "Grupos visibles" };
+  return map[v] ?? String(v);
+}
+
+/** Devuelve el label español de un campo (prioriza el registro de reglas) */
+function getFieldLabel(field: string): string {
+  return getFieldLabelFromRules(field);
+}
+
+function formatValue(field: string, value: string | number | boolean | null | undefined): string {
   if (value === null || value === undefined || value === "") return '""';
-  if (field === "maxbytes" && typeof value === "number") return formatBytes(value);
-  if (field === "visible" || field === "enablecompletion") return value === 1 ? "Activado" : "Desactivado";
-  return String(value);
+
+  // Normalizar boolean a número para campos que Moodle devuelve indistintamente como bool/int
+  const normalized = value === true ? 1 : value === false ? 0 : value;
+
+  // Campos de existencia: tanto esperado (boolean true/false) como actual (valor vacío/número)
+  if (field === "shortname_exists" || field === "idnumber_exists" || field === "startdate_exists" || field === "enddate_exists") {
+    return normalized ? "Requerido" : "No requerido";
+  }
+
+  if (field === "maxbytes" && typeof normalized === "number") return formatBytes(normalized);
+  if (field === "visible" || field === "enablecompletion" || field === "groupmodeforce" || field === "completionnotify") {
+    return normalized === 1 ? "Activado" : "Desactivado";
+  }
+  if (field === "showgrades" || field === "showreports" || field === "showactivitydates" || field === "showcompletionconditions") {
+    return normalized === 1 ? "Sí" : "No";
+  }
+  if ((field === "startdate" || field === "enddate" || field === "startdate_min" || field === "enddate_max") && typeof normalized === "number") {
+    return formatDate(normalized);
+  }
+  if (field === "groupmode" && typeof normalized === "number") return formatGroupMode(normalized);
+  if (field === "summaryformat" && typeof normalized === "number") return formatSummaryFormat(normalized);
+  if (field === "fullname_contains") return `contiene "${normalized}"`;
+  return String(normalized);
 }
 
 // ── SVG Pie Chart ─────────────────────────────────────────────────────────────
@@ -86,12 +120,7 @@ function PieChart({ ok, fallos, total }: { ok: number; fallos: number; total: nu
         <circle cx={cx} cy={cy} r={r} fill="none" stroke="currentColor" strokeWidth="18" className="text-muted/30" />
         {fallos > 0 && (
           <circle
-            cx={cx}
-            cy={cy}
-            r={r}
-            fill="none"
-            stroke="currentColor"
-            strokeWidth="18"
+            cx={cx} cy={cy} r={r} fill="none" stroke="currentColor" strokeWidth="18"
             className="text-rose-500"
             strokeDasharray={`${failDash} ${circumference}`}
             strokeDashoffset={0}
@@ -100,12 +129,7 @@ function PieChart({ ok, fallos, total }: { ok: number; fallos: number; total: nu
         )}
         {ok > 0 && (
           <circle
-            cx={cx}
-            cy={cy}
-            r={r}
-            fill="none"
-            stroke="currentColor"
-            strokeWidth="18"
+            cx={cx} cy={cy} r={r} fill="none" stroke="currentColor" strokeWidth="18"
             className="text-emerald-500"
             strokeDasharray={`${okDash} ${circumference}`}
             strokeDashoffset={-(failDash)}
@@ -135,30 +159,64 @@ function PieChart({ ok, fallos, total }: { ok: number; fallos: number; total: nu
   );
 }
 
-// ── SVG Bar Chart ─────────────────────────────────────────────────────────────
+// ── Improved Bar Chart ────────────────────────────────────────────────────────
 
-function BarChart({ errorsByField }: { errorsByField: Record<string, number> }) {
+function BarChart({ errorsByField, total }: { errorsByField: Record<string, number>; total: number }) {
   const entries = Object.entries(errorsByField).sort((a, b) => b[1] - a[1]);
-  if (entries.length === 0) return <p className="text-sm text-muted-foreground">Sin errores detectados.</p>;
+  if (entries.length === 0) {
+    return (
+      <div className="flex items-center gap-3 rounded-lg border border-emerald-200 bg-emerald-50/80 px-4 py-3 dark:border-emerald-900/50 dark:bg-emerald-950/20">
+        <CheckCircle2 className="h-4 w-4 shrink-0 text-emerald-600" />
+        <p className="text-sm text-emerald-800 dark:text-emerald-300">Sin errores por campo detectados.</p>
+      </div>
+    );
+  }
 
   const max = Math.max(...entries.map(([, v]) => v));
 
+  // Color scale: from amber (few errors) to rose (many errors)
+  const getBarColor = (count: number) => {
+    const ratio = max > 0 ? count / max : 0;
+    if (ratio >= 0.75) return "bg-rose-500";
+    if (ratio >= 0.5) return "bg-orange-500";
+    if (ratio >= 0.25) return "bg-amber-500";
+    return "bg-yellow-500";
+  };
+
+  const getBgColor = (count: number) => {
+    const ratio = max > 0 ? count / max : 0;
+    if (ratio >= 0.75) return "bg-rose-500/10";
+    if (ratio >= 0.5) return "bg-orange-500/10";
+    if (ratio >= 0.25) return "bg-amber-500/10";
+    return "bg-yellow-500/10";
+  };
+
   return (
-    <div className="space-y-2">
-      {entries.map(([field, count]) => (
-        <div key={field} className="flex items-center gap-3">
-          <span className="w-28 shrink-0 text-right text-xs font-medium text-muted-foreground">{getFieldLabel(field)}</span>
-          <div className="flex flex-1 items-center gap-2">
-            <div className="h-5 overflow-hidden rounded-sm bg-muted">
+    <div className="space-y-2.5">
+      {entries.map(([field, count]) => {
+        const pct = total > 0 ? Math.round((count / total) * 100) : 0;
+        const barWidth = max > 0 ? (count / max) * 100 : 0;
+        return (
+          <div key={field} className={`rounded-lg px-3 py-2 ${getBgColor(count)}`}>
+            <div className="mb-1.5 flex items-center justify-between gap-2">
+              <span className="text-xs font-medium leading-snug">{getFieldLabel(field)}</span>
+              <div className="flex shrink-0 items-center gap-1.5">
+                <span className="text-[11px] text-muted-foreground">{pct}% de cursos</span>
+                <span className={`rounded px-1.5 py-0.5 text-[11px] font-bold tabular-nums text-white ${getBarColor(count)}`}>
+                  {count}
+                </span>
+              </div>
+            </div>
+            <div className="h-1.5 overflow-hidden rounded-full bg-black/10 dark:bg-white/10">
               <div
-                className="h-full bg-rose-500 transition-all duration-500"
-                style={{ width: `${(count / max) * 100}%`, minWidth: "8px" }}
+                className={`h-full rounded-full transition-all duration-700 ${getBarColor(count)}`}
+                style={{ width: `${barWidth}%` }}
               />
             </div>
-            <span className="text-xs font-semibold tabular-nums">{count}</span>
+            <p className="mt-1 font-mono text-[10px] text-muted-foreground/70">{field}</p>
           </div>
-        </div>
-      ))}
+        );
+      })}
     </div>
   );
 }
@@ -266,6 +324,28 @@ function CourseImageThumbnail({ url, status }: { url: string; status: "OK" | "FA
   );
 }
 
+// ── Metadata field helper ─────────────────────────────────────────────────────
+
+function MetaField({ label, value, mono = false }: { label: string; value: string; mono?: boolean }) {
+  return (
+    <div className="overflow-hidden">
+      <dt className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground/70">{label}</dt>
+      <dd className={`mt-0.5 truncate text-xs ${mono ? "font-mono" : ""}`} title={value}>{value || "—"}</dd>
+    </div>
+  );
+}
+
+function MetaSection({ title, children }: { title: string; children: React.ReactNode }) {
+  return (
+    <section>
+      <h3 className="mb-2 text-[10px] font-bold uppercase tracking-widest text-muted-foreground">{title}</h3>
+      <dl className="grid grid-cols-2 gap-x-4 gap-y-2.5 rounded-lg border bg-muted/20 px-3 py-2.5">
+        {children}
+      </dl>
+    </section>
+  );
+}
+
 // ── Course Detail Sidebar ─────────────────────────────────────────────────────
 
 function CourseDetailSidebar({
@@ -346,36 +426,59 @@ function CourseDetailSidebar({
             </div>
 
             {/* Scrollable body */}
-            <div className="flex-1 overflow-y-auto px-5 py-5 space-y-6">
+            <div className="flex-1 overflow-y-auto px-5 py-5 space-y-5">
 
-              {/* Metadata grid */}
-              <section>
-                <h3 className="mb-3 text-xs font-semibold uppercase tracking-widest text-muted-foreground">Metadatos del curso</h3>
-                <dl className="grid grid-cols-2 gap-x-4 gap-y-3">
-                  {[
-                    { label: "ID Moodle", value: String(course.id), mono: true },
-                    { label: "Categoría", value: course.categoryName },
-                    { label: "Formato", value: course.format || "—", mono: true },
-                    { label: "Visible", value: course.visible === 1 ? "Sí" : "No" },
-                    { label: "Completitud", value: course.enablecompletion === 1 ? "Activada" : "Desactivada" },
-                    { label: "Tamaño máximo", value: formatBytes(course.maxbytes), mono: true },
-                    { label: "Idioma", value: course.lang || '(predeterminado)', mono: true },
-                    { label: "Fecha inicio", value: formatDate(course.startdate) },
-                    { label: "Fecha fin", value: formatDate(course.enddate) },
-                  ].map(({ label, value, mono }) => (
-                    <div key={label} className="overflow-hidden">
-                      <dt className="text-[11px] font-medium text-muted-foreground">{label}</dt>
-                      <dd className={`mt-0.5 truncate text-sm ${mono ? "font-mono" : ""}`} title={value}>{value}</dd>
-                    </div>
-                  ))}
-                </dl>
-              </section>
+              {/* ── Identificación ── */}
+              <MetaSection title="Identificación">
+                <MetaField label="ID Moodle" value={String(course.id)} mono />
+                <MetaField label="Categoría" value={course.categoryName} />
+                <MetaField label="Nombre corto" value={course.shortname} mono />
+                <MetaField label="Número ID" value={course.idnumber || "(sin definir)"} mono />
+              </MetaSection>
+
+              {/* ── Configuración general ── */}
+              <MetaSection title="Configuración general">
+                <MetaField label="Formato" value={course.format || "—"} mono />
+                <MetaField label="Visible" value={course.visible === 1 ? "Sí (publicado)" : "No (oculto)"} />
+                <MetaField label="Idioma forzado" value={course.lang || "(predeterminado)"} mono />
+                <MetaField label="Tema forzado" value={course.forcetheme || "(predeterminado)"} mono />
+                <MetaField label="Tamaño máx. archivos" value={formatBytes(course.maxbytes)} mono />
+                <MetaField label="Formato del resumen" value={formatSummaryFormat(course.summaryformat)} />
+              </MetaSection>
+
+              {/* ── Fechas ── */}
+              <MetaSection title="Fechas">
+                <MetaField label="Fecha de inicio" value={formatDate(course.startdate)} />
+                <MetaField label="Fecha de finalización" value={formatDate(course.enddate)} />
+              </MetaSection>
+
+              {/* ── Finalización de actividades ── */}
+              <MetaSection title="Finalización y seguimiento">
+                <MetaField label="Seguimiento de finalización" value={course.enablecompletion === 1 ? "Activado" : "Desactivado"} />
+                <MetaField label="Mostrar condiciones" value={course.showcompletionconditions === 1 ? "Sí" : "No"} />
+                <MetaField label="Notificar al completar" value={course.completionnotify === 1 ? "Sí" : "No"} />
+                <MetaField label="Mostrar fechas de actividad" value={course.showactivitydates === 1 ? "Sí" : "No"} />
+              </MetaSection>
+
+              {/* ── Visibilidad para estudiantes ── */}
+              <MetaSection title="Visibilidad para estudiantes">
+                <MetaField label="Mostrar calificaciones" value={course.showgrades === 1 ? "Sí" : "No"} />
+                <MetaField label="Mostrar informes de actividad" value={course.showreports === 1 ? "Sí" : "No"} />
+                <MetaField label="Noticias recientes" value={String(course.newsitems)} mono />
+              </MetaSection>
+
+              {/* ── Grupos ── */}
+              <MetaSection title="Configuración de grupos">
+                <MetaField label="Modo de grupos" value={formatGroupMode(course.groupmode)} />
+                <MetaField label="Forzar modo de grupos" value={course.groupmodeforce === 1 ? "Sí" : "No"} />
+                <MetaField label="Agrupación por defecto" value={course.defaultgroupingid === 0 ? "Ninguna" : String(course.defaultgroupingid)} mono />
+              </MetaSection>
 
               <div className="h-px bg-border" />
 
-              {/* Errors */}
+              {/* ── Validación de reglas ── */}
               <section>
-                <h3 className="mb-3 text-xs font-semibold uppercase tracking-widest text-muted-foreground">Validación de reglas</h3>
+                <h3 className="mb-3 text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Validación de reglas</h3>
                 {course.errors.length === 0 ? (
                   <div className="flex items-center gap-3 rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-3 dark:border-emerald-900/50 dark:bg-emerald-950/20">
                     <CheckCircle2 className="h-4 w-4 shrink-0 text-emerald-600" />
@@ -386,16 +489,28 @@ function CourseDetailSidebar({
                 ) : (
                   <div className="space-y-2">
                     {course.errors.map((err) => (
-                      <div key={err.field} className="rounded-md border border-rose-200 bg-rose-50/50 px-3 py-2.5 dark:border-rose-900/40 dark:bg-rose-950/10">
-                        <p className="mb-2 text-xs font-semibold text-foreground">{getFieldLabel(err.field)}</p>
-                        <div className="flex flex-wrap items-center gap-2 text-xs">
-                          <span className="rounded-full border border-emerald-300 bg-emerald-100 px-2 py-0.5 font-mono text-emerald-800 dark:border-emerald-800 dark:bg-emerald-950 dark:text-emerald-300">
-                            esperado: {formatValue(err.field, err.expected)}
-                          </span>
+                      <div key={err.field} className="overflow-hidden rounded-lg border border-rose-200 bg-rose-50/50 dark:border-rose-900/40 dark:bg-rose-950/10">
+                        {/* Error header */}
+                        <div className="flex items-center gap-2 border-b border-rose-200/60 bg-rose-100/50 px-3 py-1.5 dark:border-rose-900/30 dark:bg-rose-950/20">
+                          <AlertTriangle className="h-3 w-3 shrink-0 text-rose-600" />
+                          <p className="text-xs font-semibold text-rose-900 dark:text-rose-300">{getFieldLabel(err.field)}</p>
+                          <span className="ml-auto font-mono text-[10px] text-rose-600/70 dark:text-rose-400/70">{err.field}</span>
+                        </div>
+                        {/* Expected vs actual */}
+                        <div className="flex flex-wrap items-center gap-2 px-3 py-2 text-xs">
+                          <div className="flex flex-col gap-0.5">
+                            <span className="text-[10px] text-muted-foreground">Esperado</span>
+                            <span className="rounded-full border border-emerald-300 bg-emerald-100 px-2 py-0.5 font-mono text-emerald-800 dark:border-emerald-800 dark:bg-emerald-950 dark:text-emerald-300">
+                              {formatValue(err.field, err.expected)}
+                            </span>
+                          </div>
                           <span className="text-muted-foreground">→</span>
-                          <span className="rounded-full border border-rose-300 bg-rose-100 px-2 py-0.5 font-mono text-rose-800 dark:border-rose-800 dark:bg-rose-950 dark:text-rose-300">
-                            actual: {formatValue(err.field, err.actual)}
-                          </span>
+                          <div className="flex flex-col gap-0.5">
+                            <span className="text-[10px] text-muted-foreground">Actual</span>
+                            <span className="rounded-full border border-rose-300 bg-rose-100 px-2 py-0.5 font-mono text-rose-800 dark:border-rose-800 dark:bg-rose-950 dark:text-rose-300">
+                              {formatValue(err.field, err.actual)}
+                            </span>
+                          </div>
                         </div>
                       </div>
                     ))}
@@ -412,20 +527,19 @@ function CourseDetailSidebar({
 
 // ── Main Page ─────────────────────────────────────────────────────────────────
 
-// The fn registry entry for core_course_get_courses (used to show rules summary)
 const COURSE_FN = API_FUNCTIONS.find((f) => f.wsfunction === "core_course_get_courses")!;
 
 export default function RevisionCursosPage() {
   const [moodleConfigLoaded, setMoodleConfigLoaded] = useState(false);
   const [rulesConfig, setRulesConfig] = useState<RulesConfig | null>(null);
+  const [settingsOpen, setSettingsOpen] = useState(false);
 
-  // Query state
   const [categoryId, setCategoryId] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [payload, setPayload] = useState<RevisionCursosResponse | null>(null);
 
-  // View state
+  const [rulesOpen, setRulesOpen] = useState(false);
   const [activeTab, setActiveTab] = useState<"tree" | "table">("tree");
   const [selectedCourseId, setSelectedCourseId] = useState<number | null>(null);
   const [searchText, setSearchText] = useState("");
@@ -445,18 +559,16 @@ export default function RevisionCursosPage() {
     idioma: false,
   });
 
-  // Load Moodle config and rules on mount
-  useEffect(() => {
-    async function load() {
-      const [config, savedRules] = await Promise.all([
-        loadMoodleConfig(),
-        loadEncryptedJson<RulesConfig>(localStorageKey(COURSE_FN.storageKey)),
-      ]);
-      if (config?.token && config.moodleUrl) setMoodleConfigLoaded(true);
-      setRulesConfig(savedRules ?? buildDefaultRulesConfig(COURSE_FN));
-    }
-    void load();
+  const loadSettings = useCallback(async () => {
+    const [config, savedRules] = await Promise.all([
+      loadMoodleConfig(),
+      loadEncryptedJson<RulesConfig>(localStorageKey(COURSE_FN.storageKey)),
+    ]);
+    setMoodleConfigLoaded(!!(config?.token && config.moodleUrl));
+    setRulesConfig(savedRules ?? buildDefaultRulesConfig(COURSE_FN));
   }, []);
+
+  useEffect(() => { void loadSettings(); }, [loadSettings]);
 
   const selectedCourse = useMemo(
     () => (selectedCourseId !== null ? payload?.results.find((r) => r.id === selectedCourseId) ?? null : null),
@@ -498,7 +610,7 @@ export default function RevisionCursosPage() {
         case "idnumber": return row.idnumber;
         case "categoria": return row.categoryName;
         case "estado": return row.status;
-        case "errores": return row.errors.map((e) => `${e.field}: esperado ${e.expected}, actual ${e.actual}`).join("; ");
+        case "errores": return row.errors.map((e) => `${e.field}: esperado ${String(e.expected)}, actual ${String(e.actual)}`).join("; ");
         case "formato": return row.format;
         case "visible": return row.visible;
         case "completitud": return row.enablecompletion;
@@ -578,52 +690,66 @@ export default function RevisionCursosPage() {
         </div>
         <div className="flex items-center justify-between gap-3">
           <h1 className="text-3xl font-semibold tracking-tight">Revisión de cursos</h1>
-          <Link href="/configuracion/ajustes">
-            <Button type="button" variant="outline">
-              <Settings2 className="mr-1.5 h-4 w-4" />
-              Ajustes
-            </Button>
-          </Link>
+          <Button type="button" variant="outline" onClick={() => setSettingsOpen(true)}>
+            <Settings2 className="mr-1.5 h-4 w-4" />
+            Ajustes
+          </Button>
         </div>
         <p className="text-muted-foreground">
           Valida la configuración de cursos Moodle vía API REST: formato, visibilidad, completitud y más.
         </p>
       </header>
 
-      {/* ── Rules Card (read-only) ── */}
+      {/* ── Rules Card (accordion) ── */}
       <Card>
-        <CardHeader className="pb-3">
-          <div className="flex items-center justify-between gap-3">
+        <div className="flex w-full items-center gap-3 px-6 py-4">
+          <button
+            type="button"
+            className="flex flex-1 items-center gap-2 text-left"
+            onClick={() => setRulesOpen((o) => !o)}
+            aria-expanded={rulesOpen}
+          >
+            <ChevronDown
+              className={`h-4 w-4 shrink-0 text-muted-foreground transition-transform duration-200 ${
+                rulesOpen ? "rotate-180" : ""
+              }`}
+            />
             <div>
-              <CardTitle className="text-base">Reglas de validación activas</CardTitle>
-              <CardDescription>
-                Campos configurados en{" "}
-                <Link href="/configuracion/ajustes" className="underline underline-offset-2">
-                  Ajustes → Moodle API
-                </Link>
-                .
-              </CardDescription>
+              <p className="text-base font-semibold leading-none tracking-tight">Reglas de validación activas</p>
+              <p className="mt-1 text-sm text-muted-foreground">
+                {rulesConfig
+                  ? `${Object.values(rulesConfig).filter((r) => r.active).length} reglas configuradas`
+                  : "Cargando reglas..."}
+              </p>
             </div>
-            <Link href="/configuracion/ajustes">
-              <Button type="button" variant="ghost" size="sm">Modificar</Button>
-            </Link>
-          </div>
-        </CardHeader>
-        <CardContent className="pt-0">
-          {rulesConfig ? (
-            <div className="flex flex-wrap gap-2">
-              {Object.entries(rulesConfig)
-                .filter(([, r]) => r.active)
-                .map(([field, r]) => (
-                  <span key={field} className="rounded border bg-muted/50 px-2 py-0.5 font-mono text-[11px]">
-                    {field}: <span className="font-semibold">{String(r.expected) === "" ? '""' : String(r.expected)}</span>
-                  </span>
-                ))}
-            </div>
-          ) : (
-            <p className="text-sm text-muted-foreground">Cargando reglas...</p>
-          )}
-        </CardContent>
+          </button>
+          <Button
+            type="button"
+            variant="ghost"
+            size="sm"
+            onClick={() => setSettingsOpen(true)}
+          >
+            Modificar
+          </Button>
+        </div>
+        {rulesOpen && (
+          <CardContent className="border-t pt-4">
+            {rulesConfig ? (
+              <div className="flex flex-wrap gap-2">
+                {Object.entries(rulesConfig)
+                  .filter(([, r]) => r.active)
+                  .map(([field, r]) => (
+                    <span key={field} className="rounded border bg-muted/50 px-2 py-0.5 text-[11px]">
+                      <span className="text-muted-foreground">{getFieldLabel(field)}:</span>{" "}
+                      <span className="font-semibold font-mono">{formatValue(field, r.expected)}</span>
+                    </span>
+                  ))}
+              </div>
+            ) : (
+              <p className="text-sm text-muted-foreground">Cargando reglas...</p>
+            )}
+          </CardContent>
+        )}
       </Card>
 
       {/* ── Query Form ── */}
@@ -685,7 +811,7 @@ export default function RevisionCursosPage() {
                 </CardTitle>
               </CardHeader>
               <CardContent className="pt-2">
-                <BarChart errorsByField={payload.errorsByField} />
+                <BarChart errorsByField={payload.errorsByField} total={payload.total} />
               </CardContent>
             </Card>
           </div>
@@ -734,7 +860,6 @@ export default function RevisionCursosPage() {
                       ))}
                     </div>
                   )}
-                  {/* Courses without categories (flat list) */}
                   {payload.categoryTree.length === 0 && payload.results.length > 0 && (
                     <div className="space-y-0.5">
                       {payload.results.map((r) => (
@@ -851,9 +976,13 @@ export default function RevisionCursosPage() {
                                 {row.errors.length === 0 ? (
                                   <span className="text-xs text-muted-foreground">—</span>
                                 ) : (
-                                  <span className="text-xs text-rose-700 dark:text-rose-400">
-                                    {row.errors.map((e) => e.field).join(", ")}
-                                  </span>
+                                  <div className="flex flex-wrap gap-1">
+                                    {row.errors.map((e) => (
+                                      <span key={e.field} className="rounded bg-rose-100 px-1.5 py-0.5 text-[10px] font-medium text-rose-800 dark:bg-rose-950 dark:text-rose-300">
+                                        {getFieldLabel(e.field)}
+                                      </span>
+                                    ))}
+                                  </div>
                                 )}
                               </td>
                             )}
@@ -876,6 +1005,13 @@ export default function RevisionCursosPage() {
 
       {/* ── Course Detail Sidebar ── */}
       <CourseDetailSidebar course={selectedCourse ?? null} onClose={() => setSelectedCourseId(null)} />
+
+      {/* ── Settings Sidebar ── */}
+      <SettingsSidebar
+        open={settingsOpen}
+        onClose={() => setSettingsOpen(false)}
+        onRulesChange={() => void loadSettings()}
+      />
     </main>
   );
 }
