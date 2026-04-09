@@ -639,6 +639,13 @@ export default function RevisionCursosPage() {
     setError(null);
     setPayload(null);
 
+    const parsedCategoryId = Number(categoryId);
+    if (!categoryId.trim() || Number.isNaN(parsedCategoryId) || parsedCategoryId <= 0) {
+      setError("Debes ingresar un ID de categoría válido para ejecutar la validación.");
+      setLoading(false);
+      return;
+    }
+
     const config = await loadMoodleConfig();
     if (!config?.token || !config.moodleUrl) {
       setError("Configura el Token y la URL de Moodle en Ajustes antes de ejecutar.");
@@ -655,7 +662,7 @@ export default function RevisionCursosPage() {
         body: JSON.stringify({
           moodleUrl: config.moodleUrl,
           token: config.token,
-          categoryId: categoryId ? Number(categoryId) : undefined,
+          categoryId: parsedCategoryId,
           rules: activeRules,
         }),
       });
@@ -757,23 +764,25 @@ export default function RevisionCursosPage() {
         <CardHeader>
           <CardTitle>Ejecutar validación</CardTitle>
           <CardDescription>
-            Filtra por ID de categoría o deja vacío para validar todos los cursos.
+            Ingresa el ID de categoría para ejecutar la validación.
           </CardDescription>
         </CardHeader>
         <CardContent>
           <form className="flex flex-wrap items-end gap-3" onSubmit={(e) => void onSubmit(e)}>
             <div className="w-full space-y-1.5 sm:max-w-64">
-              <Label htmlFor="categoryId">ID de categoría <span className="text-muted-foreground">(opcional)</span></Label>
+              <Label htmlFor="categoryId">ID de categoría <span className="text-destructive">*</span></Label>
               <input
                 id="categoryId"
                 type="number"
                 value={categoryId}
                 onChange={(e) => setCategoryId(e.target.value)}
-                placeholder="Ej: 42 — vacío para todos"
+                placeholder="Ej: 42"
+                required
+                min={1}
                 className="flex h-9 w-full rounded-md border border-input bg-background px-3 py-1 font-mono text-sm shadow-xs focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
               />
             </div>
-            <Button type="submit" disabled={loading || !moodleConfigLoaded}>
+            <Button type="submit" disabled={loading || !moodleConfigLoaded || !categoryId.trim()}>
               {loading ? "Consultando API..." : "Ejecutar validación"}
             </Button>
             {!moodleConfigLoaded && (
