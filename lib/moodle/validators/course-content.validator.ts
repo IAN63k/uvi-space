@@ -7,6 +7,7 @@ import type {
   AttendanceChecks,
   MicrocurriculumChecks,
   BlocksChecks,
+  SectionDateCheck,
 } from "@/lib/moodle/types";
 import {
   getCourseContents,
@@ -105,6 +106,38 @@ function failedAttendanceChecks(): AttendanceChecks {
     visibleOnCoursePage: fail("Visible en página del curso"),
   };
 }
+
+// ── Section date helpers ──────────────────────────────────────────────────────
+
+/**
+ * Strips HTML tags and decodes common entities to get plain text.
+ * Used server-side where no DOM is available.
+ */
+function htmlToPlainText(html: string): string {
+  return html
+    .replace(/<[^>]*>/g, " ")
+    .replace(/&nbsp;/gi, " ")
+    .replace(/&amp;/gi, "&")
+    .replace(/&lt;/gi, "<")
+    .replace(/&gt;/gi, ">")
+    .replace(/&[a-z]+;/gi, " ")
+    .replace(/&#\d+;/gi, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+/** Date value: accepts the literal placeholder "DD/MM/AAAA" OR a real date like "15/03/2025" */
+const DATE_VALUE     = String.raw`(DD\/MM\/AAAA|\d{2}\/\d{2}\/\d{4})`;
+
+/**
+ * Matches "Fecha de Inicio: DD/MM/AAAA" — accepts placeholder or real date.
+ * Handles extra spaces and HTML-stripped text.
+ */
+const START_DATE_RE  = new RegExp(String.raw`Fecha\s+de\s+Inicio\s*:\s*` + DATE_VALUE, "i");
+/**
+ * Matches "Fecha de Finalización: DD/MM/AAAA" — accent on ó is optional.
+ */
+const END_DATE_RE    = new RegExp(String.raw`Fecha\s+de\s+Finalizaci[oó]n\s*:\s*` + DATE_VALUE, "i");
 
 const DOCUMENT_MIMETYPES = new Set([
   "application/pdf",
@@ -496,6 +529,47 @@ export async function validateCourseContent(
     return { checks, passed };
   })();
 
+  // ── Section dates validation ───────────────────────────────────────────────
+
+  const sectionDatesResult: CourseContentValidationResult["sectionDates"] = (() => {
+    // Only validate visible content sections (section > 0)
+    const contentSections = sections.filter((s) => s.section > 0 && s.visible === 1);
+
+    const sectionChecks: SectionDateCheck[] = contentSections.map((s) => {
+      const text       = htmlToPlainText(s.summary ?? "");
+      const startMatch = START_DATE_RE.exec(text);
+      const endMatch   = END_DATE_RE.exec(text);
+
+      const startValue = startMatch?.[1] ?? null;
+      const endValue   = endMatch?.[1] ?? null;
+
+      // Passes ONLY when the placeholder "DD/MM/AAAA" is present (not a real date).
+      const hasStartDate = makeCheck(
+        startValue === "DD/MM/AAAA",
+        "DD/MM/AAAA",
+        startValue ?? "(no encontrada)",
+        "Fecha de inicio",
+      );
+      const hasEndDate = makeCheck(
+        endValue === "DD/MM/AAAA",
+        "DD/MM/AAAA",
+        endValue ?? "(no encontrada)",
+        "Fecha de finalización",
+      );
+
+      return {
+        sectionNumber: s.section,
+        sectionName:   s.name || `Sección ${s.section}`,
+        hasStartDate,
+        hasEndDate,
+        passed: hasStartDate.passed && hasEndDate.passed,
+      };
+    });
+
+    const passed = sectionChecks.length === 0 || sectionChecks.every((s) => s.passed);
+    return { sections: sectionChecks, passed };
+  })();
+
   // ── Overall result ─────────────────────────────────────────────────────────
 
   const passed =
@@ -504,7 +578,8 @@ export async function validateCourseContent(
     meetingResult.passed &&
     attendanceResult.passed &&
     microcurriculumResult.passed &&
-    blocksResult.passed;
+    blocksResult.passed &&
+    sectionDatesResult.passed;
 
   return {
     courseId,
@@ -518,6 +593,7 @@ export async function validateCourseContent(
     attendance: attendanceResult,
     microcurriculum: microcurriculumResult,
     blocks: blocksResult,
+    sectionDates: sectionDatesResult,
     passed,
   };
 }

@@ -257,6 +257,14 @@ export interface MicrocurriculumChecks {
   hasDocument: ValidationCheck;
 }
 
+export interface SectionDateCheck {
+  sectionNumber: number;
+  sectionName: string;
+  hasStartDate: ValidationCheck;
+  hasEndDate: ValidationCheck;
+  passed: boolean;
+}
+
 export interface MoodleBlock {
   instanceid: number;
   name: string;
@@ -308,6 +316,11 @@ export interface CourseContentValidationResult {
   };
   blocks: {
     checks: BlocksChecks;
+    passed: boolean;
+  };
+  sectionDates: {
+    /** Only visible sections with section.section > 0 */
+    sections: SectionDateCheck[];
     passed: boolean;
   };
   passed: boolean;
