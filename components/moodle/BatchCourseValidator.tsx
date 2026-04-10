@@ -55,6 +55,10 @@ function exportCsv(results: CourseContentValidationResult[], categoryName: strin
     "Asistencia visible",
     "Asistencia visible usuario",
     "Asistencia visible en página",
+    // Section dates
+    "Secciones activas",
+    "Secciones con fechas OK",
+    "Secciones con fechas faltantes",
     // Blocks
     "Bloque badges",
     "Bloque completion_progress",
@@ -109,6 +113,10 @@ function exportCsv(results: CourseContentValidationResult[], categoryName: strin
       m.userVisible.passed ? "OK" : String(m.userVisible.actual),
       m.visibleOnCoursePage.passed ? "OK" : String(m.visibleOnCoursePage.actual),
       m.modplural.passed ? "OK" : String(m.modplural.actual),
+      // Section dates
+      r.sectionDates.sections.length,
+      r.sectionDates.sections.filter((s) => s.passed).length,
+      r.sectionDates.sections.filter((s) => !s.passed).map((s) => `§${s.sectionNumber}`).join("; ") || "—",
       // Blocks
       r.blocks.checks["badges"]?.passed ? "OK" : "Ausente",
       r.blocks.checks["completion_progress"]?.passed ? "OK" : "Ausente",
