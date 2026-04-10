@@ -6,15 +6,25 @@ import type {
   MeetingChecks,
   AttendanceChecks,
   MicrocurriculumChecks,
+  BlocksChecks,
 } from "@/lib/moodle/types";
 import {
   getCourseContents,
   getCourseModule,
   getPagesByCourse,
   getForumsByCourse,
+  getCourseBlocks,
 } from "@/lib/moodle/moodle.service";
 
 // ── Configurable constants ────────────────────────────────────────────────────
+
+export const REQUIRED_BLOCKS = [
+  "badges",
+  "completion_progress",
+  "dedication",
+  "online_users",
+  "completionstatus",
+] as const;
 
 export const CONTENT_VALIDATION_CONSTANTS = {
   /** Expected idnumber for the professor presentation page module */
@@ -139,11 +149,12 @@ export async function validateCourseContent(
   const expectedForumIdnumber = CONTENT_VALIDATION_CONSTANTS.EXPECTED_FORUM_IDNUMBER;
   const expectedForumType     = CONTENT_VALIDATION_CONSTANTS.EXPECTED_FORUM_TYPE;
 
-  // --- Parallel fetch: sections + all page activities + all forum activities --
-  const [sections, pages, forums] = await Promise.all([
+  // --- Parallel fetch: sections + pages + forums + blocks ---------------------
+  const [sections, pages, forums, courseBlocksList] = await Promise.all([
     getCourseContents(moodleUrl, token, courseId),
     getPagesByCourse(moodleUrl, token, courseId),
     getForumsByCourse(moodleUrl, token, courseId),
+    getCourseBlocks(moodleUrl, token, courseId),
   ]);
 
   // --- Rule 1: Count real sections (section index > 0) ----------------------
@@ -466,6 +477,25 @@ export async function validateCourseContent(
     return { found: true, cmid: resourceModule.id, checks, fileUrl, passed };
   })();
 
+  // ── Blocks validation ──────────────────────────────────────────────────────
+
+  const blocksResult: CourseContentValidationResult["blocks"] = (() => {
+    const presentNames = new Set(courseBlocksList.map((b) => b.name));
+
+    const checks: BlocksChecks = Object.fromEntries(
+      REQUIRED_BLOCKS.map((blockName) => {
+        const present = presentNames.has(blockName);
+        return [
+          blockName,
+          makeCheck(present, "presente", present ? "presente" : "ausente", blockName),
+        ];
+      }),
+    );
+
+    const passed = Object.values(checks).every((c) => c.passed);
+    return { checks, passed };
+  })();
+
   // ── Overall result ─────────────────────────────────────────────────────────
 
   const passed =
@@ -473,7 +503,8 @@ export async function validateCourseContent(
     consultationForumResult.passed &&
     meetingResult.passed &&
     attendanceResult.passed &&
-    microcurriculumResult.passed;
+    microcurriculumResult.passed &&
+    blocksResult.passed;
 
   return {
     courseId,
@@ -486,6 +517,7 @@ export async function validateCourseContent(
     meeting: meetingResult,
     attendance: attendanceResult,
     microcurriculum: microcurriculumResult,
+    blocks: blocksResult,
     passed,
   };
 }

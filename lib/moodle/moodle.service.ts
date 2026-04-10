@@ -1,6 +1,6 @@
 import https from "node:https";
 import axios from "axios";
-import type { MoodleCategory, MoodleCourse, ValidationRules, CourseError, CourseValidationResult, CategoryNode, CourseSummary, CourseSection, CourseModuleDetail, MoodlePage, MoodleForum } from "./types";
+import type { MoodleCategory, MoodleCourse, ValidationRules, CourseError, CourseValidationResult, CategoryNode, CourseSummary, CourseSection, CourseModuleDetail, MoodlePage, MoodleForum, MoodleBlock } from "./types";
 
 // Axios instance with a custom HTTPS agent that:
 // - Disables strict SSL verification (handles self-signed / intermediate certs common in .edu environments)
@@ -430,6 +430,21 @@ export async function getPagesByCourse(
     extraParams: { "courseids[0]": courseId },
   });
   return data.pages ?? [];
+}
+
+/** Fetches all sidebar blocks configured for a course. */
+export async function getCourseBlocks(
+  moodleUrl: string,
+  token: string,
+  courseId: number,
+): Promise<MoodleBlock[]> {
+  const data = await apiCall<{ blocks?: MoodleBlock[] }>({
+    moodleUrl,
+    token,
+    wsfunction: "core_block_get_course_blocks",
+    extraParams: { courseid: courseId },
+  });
+  return data.blocks ?? [];
 }
 
 /** Fetches all forum-type activity instances for a course in a single call.
