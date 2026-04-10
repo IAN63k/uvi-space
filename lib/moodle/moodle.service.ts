@@ -1,6 +1,6 @@
 import https from "node:https";
 import axios from "axios";
-import type { MoodleCategory, MoodleCourse, ValidationRules, CourseError, CourseValidationResult, CategoryNode, CourseSummary } from "./types";
+import type { MoodleCategory, MoodleCourse, ValidationRules, CourseError, CourseValidationResult, CategoryNode, CourseSummary, CourseSection, CourseModuleDetail, MoodlePage, MoodleForum } from "./types";
 
 // Axios instance with a custom HTTPS agent that:
 // - Disables strict SSL verification (handles self-signed / intermediate certs common in .edu environments)
@@ -355,4 +355,95 @@ export async function runRevision(
     : buildCategoryTree(allCategories, 0, courseMap, resultMap);
 
   return { results, categoryTree: treeRoot, errorsByField };
+}
+
+// ── Content inspection endpoints ─────────────────────────────────────────────
+
+/** Fetches all sections and their modules for a given course. */
+export async function getCourseContents(
+  moodleUrl: string,
+  token: string,
+  courseId: number,
+): Promise<CourseSection[]> {
+  const data = await apiCall<CourseSection[]>({
+    moodleUrl,
+    token,
+    wsfunction: "core_course_get_contents",
+    extraParams: { courseid: courseId },
+  });
+  return Array.isArray(data) ? data : [];
+}
+
+/** Fetches the full configuration detail of a single course module (cmid). */
+export async function getCourseModule(
+  moodleUrl: string,
+  token: string,
+  cmid: number,
+): Promise<CourseModuleDetail> {
+  const data = await apiCall<{ cm: CourseModuleDetail }>({
+    moodleUrl,
+    token,
+    wsfunction: "core_course_get_course_module",
+    extraParams: { cmid },
+  });
+  return data.cm;
+}
+
+/** Fetches a single course by its numeric ID. Throws if not found. */
+export async function getCourseById(
+  moodleUrl: string,
+  token: string,
+  courseId: number,
+): Promise<MoodleCourse> {
+  const data = await apiCall<{ courses?: MoodleCourse[] }>({
+    moodleUrl,
+    token,
+    wsfunction: "core_course_get_courses_by_field",
+    extraParams: { field: "id", value: courseId },
+  });
+  const course = data.courses?.[0];
+  if (!course) {
+    throw new Error(`Curso con ID ${courseId} no encontrado en Moodle`);
+  }
+  return course;
+}
+
+/** Returns the direct child categories of a given parent category. */
+export async function getCategoriesByParent(
+  moodleUrl: string,
+  token: string,
+  parentId: number,
+): Promise<MoodleCategory[]> {
+  return getDirectSubcategories(moodleUrl, token, parentId);
+}
+
+/** Fetches all page-type activity instances for a course in a single call. */
+export async function getPagesByCourse(
+  moodleUrl: string,
+  token: string,
+  courseId: number,
+): Promise<MoodlePage[]> {
+  const data = await apiCall<{ pages?: MoodlePage[] }>({
+    moodleUrl,
+    token,
+    wsfunction: "mod_page_get_pages_by_courses",
+    extraParams: { "courseids[0]": courseId },
+  });
+  return data.pages ?? [];
+}
+
+/** Fetches all forum-type activity instances for a course in a single call.
+ *  mod_forum_get_forums_by_courses returns a plain array (not wrapped). */
+export async function getForumsByCourse(
+  moodleUrl: string,
+  token: string,
+  courseId: number,
+): Promise<MoodleForum[]> {
+  const data = await apiCall<MoodleForum[]>({
+    moodleUrl,
+    token,
+    wsfunction: "mod_forum_get_forums_by_courses",
+    extraParams: { "courseids[0]": courseId },
+  });
+  return Array.isArray(data) ? data : [];
 }
