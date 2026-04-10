@@ -55,6 +55,12 @@ function exportCsv(results: CourseContentValidationResult[], categoryName: strin
     "Asistencia visible",
     "Asistencia visible usuario",
     "Asistencia visible en página",
+    // Blocks
+    "Bloque badges",
+    "Bloque completion_progress",
+    "Bloque dedication",
+    "Bloque online_users",
+    "Bloque completionstatus",
     // Microcurriculum
     "Microcurrículo encontrado",
     "Microcurrículo visible",
@@ -103,6 +109,12 @@ function exportCsv(results: CourseContentValidationResult[], categoryName: strin
       m.userVisible.passed ? "OK" : String(m.userVisible.actual),
       m.visibleOnCoursePage.passed ? "OK" : String(m.visibleOnCoursePage.actual),
       m.modplural.passed ? "OK" : String(m.modplural.actual),
+      // Blocks
+      r.blocks.checks["badges"]?.passed ? "OK" : "Ausente",
+      r.blocks.checks["completion_progress"]?.passed ? "OK" : "Ausente",
+      r.blocks.checks["dedication"]?.passed ? "OK" : "Ausente",
+      r.blocks.checks["online_users"]?.passed ? "OK" : "Ausente",
+      r.blocks.checks["completionstatus"]?.passed ? "OK" : "Ausente",
       // Attendance
       r.attendance.found ? "Sí" : "No",
       at.visible.passed ? "OK" : String(at.visible.actual),

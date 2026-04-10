@@ -18,6 +18,7 @@ import {
   ClipboardList,
   FileText,
   ExternalLink,
+  LayoutDashboard,
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -280,22 +281,24 @@ export interface CourseContentValidatorProps {
 
 export function CourseContentValidator({ result }: CourseContentValidatorProps) {
   const [previewOpen,    setPreviewOpen]    = useState(false);
-  const [openAccordion,  setOpenAccordion]  = useState<"page" | "forum" | "meeting" | "attendance" | "microcurriculum" | null>("page");
+  const [openAccordion,  setOpenAccordion]  = useState<"page" | "forum" | "meeting" | "attendance" | "microcurriculum" | "blocks" | null>("page");
 
-  const { professorPage, consultationForum, meeting, attendance, microcurriculum } = result;
+  const { professorPage, consultationForum, meeting, attendance, microcurriculum, blocks } = result;
 
   const pageChecks            = Object.values(professorPage.checks) as ValidationCheck[];
   const forumChecks           = Object.values(consultationForum.checks) as ValidationCheck[];
   const meetingChecks         = Object.values(meeting.checks) as ValidationCheck[];
   const attendanceChecks      = Object.values(attendance.checks) as ValidationCheck[];
   const microcurriculumChecks = Object.values(microcurriculum.checks) as ValidationCheck[];
+  const blocksChecks          = Object.values(blocks.checks) as ValidationCheck[];
   const pagePassedCnt            = pageChecks.filter((c) => c.passed).length;
   const forumPassedCnt           = forumChecks.filter((c) => c.passed).length;
   const meetingPassedCnt         = meetingChecks.filter((c) => c.passed).length;
   const attendancePassedCnt      = attendanceChecks.filter((c) => c.passed).length;
   const microcurriculumPassedCnt = microcurriculumChecks.filter((c) => c.passed).length;
+  const blocksPassedCnt          = blocksChecks.filter((c) => c.passed).length;
 
-  const toggle = (key: "page" | "forum" | "meeting" | "attendance" | "microcurriculum") =>
+  const toggle = (key: "page" | "forum" | "meeting" | "attendance" | "microcurriculum" | "blocks") =>
     setOpenAccordion((prev) => (prev === key ? null : key));
 
   return (
@@ -420,6 +423,24 @@ export function CourseContentValidator({ result }: CourseContentValidatorProps) 
           notFoundLabel="No se encontró un módulo attendance en la sección de presentación"
         >
           <ChecksBody checks={attendanceChecks} />
+        </AccordionItem>
+
+        {/* ── Accordion: Blocks ── */}
+        <AccordionItem
+          id="blocks"
+          icon={LayoutDashboard}
+          title="Bloques del curso"
+          idnumber="blocks"
+          found={blocksChecks.length > 0}
+          passed={blocks.passed}
+          passedCount={blocksPassedCnt}
+          totalCount={blocksChecks.length}
+          cmid={null}
+          isOpen={openAccordion === "blocks"}
+          onToggle={() => toggle("blocks")}
+          notFoundLabel="No se pudieron obtener los bloques del curso"
+        >
+          <ChecksBody checks={blocksChecks} />
         </AccordionItem>
 
         {/* ── Accordion: Microcurriculum ── */}

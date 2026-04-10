@@ -257,6 +257,17 @@ export interface MicrocurriculumChecks {
   hasDocument: ValidationCheck;
 }
 
+export interface MoodleBlock {
+  instanceid: number;
+  name: string;
+  region: string;
+  weight: number;
+  visible: boolean;
+}
+
+/** One ValidationCheck per required block name */
+export type BlocksChecks = Record<string, ValidationCheck>;
+
 export interface CourseContentValidationResult {
   courseId: number;
   courseName: string;
@@ -293,6 +304,10 @@ export interface CourseContentValidationResult {
     cmid: number | null;
     checks: MicrocurriculumChecks;
     fileUrl: string | null;
+    passed: boolean;
+  };
+  blocks: {
+    checks: BlocksChecks;
     passed: boolean;
   };
   passed: boolean;
