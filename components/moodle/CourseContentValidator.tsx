@@ -25,7 +25,7 @@ import {
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import type { CourseContentValidationResult, ValidationCheck, SectionDateCheck } from "@/lib/moodle/types";
+import type { CourseContentValidationResult, ValidationCheck, SectionDateCheck, GradebookCategoryCheck, GradeCategoryItem } from "@/lib/moodle/types";
 
 // ── Check Row ─────────────────────────────────────────────────────────────────
 
@@ -38,9 +38,9 @@ function CheckRow({ check, index }: { check: ValidationCheck; index: number }) {
     >
       <span className="shrink-0">
         {passed ? (
-          <CheckCircle2 className="h-[17px] w-[17px] text-emerald-500 drop-shadow-[0_0_4px_rgb(16_185_129_/_0.4)]" />
+          <CheckCircle2 className="h-4.25 w-4.25 text-emerald-500 drop-shadow-[0_0_4px_rgb(16_185_129/0.4)]" />
         ) : (
-          <XCircle className="h-[17px] w-[17px] text-rose-500 drop-shadow-[0_0_4px_rgb(244_63_94_/_0.4)]" />
+          <XCircle className="h-4.25 w-4.25 text-rose-500 drop-shadow-[0_0_4px_rgb(244_63_94/0.4)]" />
         )}
       </span>
       <span className="flex-1 text-sm font-medium leading-none">{check.label}</span>
@@ -72,7 +72,7 @@ function ContentPreviewModal({ html, onClose }: { html: string; onClose: () => v
   return (
     <>
       <div className="fixed inset-0 z-50 bg-black/70 backdrop-blur-sm" onClick={onClose} />
-      <div className="fixed left-1/2 top-1/2 z-[60] flex w-full max-w-3xl -translate-x-1/2 -translate-y-1/2 flex-col overflow-hidden rounded-2xl border bg-background shadow-2xl">
+      <div className="fixed left-1/2 top-1/2 z-60 flex w-full max-w-3xl -translate-x-1/2 -translate-y-1/2 flex-col overflow-hidden rounded-2xl border bg-background shadow-2xl">
         <div className="flex shrink-0 items-center justify-between border-b bg-muted/30 px-6 py-4">
           <div className="flex items-center gap-2.5">
             <div className="flex h-7 w-7 items-center justify-center rounded-lg border bg-background shadow-sm">
@@ -300,6 +300,141 @@ function SectionDatesBody({ sections }: { sections: SectionDateCheck[] }) {
   );
 }
 
+// ── Gradebook Body ────────────────────────────────────────────────────────────
+
+function GradebookBody({
+  categories,
+  categoryItems,
+  efcChecks,
+  error,
+}: {
+  categories: GradebookCategoryCheck[];
+  categoryItems: GradeCategoryItem[];
+  efcChecks: Record<string, ValidationCheck>;
+  error?: string;
+}) {
+  const dot = (passed: boolean) => (
+    <span className={`inline-flex h-2 w-2 shrink-0 rounded-full ${passed ? "bg-emerald-500" : "bg-rose-500"}`} />
+  );
+
+  return (
+    <div className="space-y-0">
+
+      {/* ── Árbol de calificaciones: nombre + children ── */}
+      <div className="flex items-center gap-3 px-5 pt-3.5 pb-1">
+        <span className="text-[10px] font-semibold uppercase tracking-widest text-muted-foreground/60">Categorías EFC (árbol)</span>
+        <div className="h-px flex-1 bg-border/50" />
+      </div>
+      {error && (
+        <div className="flex items-start gap-2 px-5 pb-2 text-xs text-rose-700 dark:text-rose-400">
+          <XCircle className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+          <span className="font-mono">{error}</span>
+        </div>
+      )}
+      <div className="overflow-x-auto">
+        <table className="w-full text-xs">
+          <thead>
+            <tr className="border-b bg-muted/20">
+              <th className="px-4 py-2 text-left font-semibold uppercase tracking-widest text-muted-foreground">Categoría</th>
+              <th className="px-3 py-2 text-center font-semibold uppercase tracking-widest text-muted-foreground">Existe</th>
+              <th className="px-3 py-2 text-center font-semibold uppercase tracking-widest text-muted-foreground">Sin ítems</th>
+              <th className="px-3 py-2 text-center font-semibold uppercase tracking-widest text-muted-foreground">Estado</th>
+            </tr>
+          </thead>
+          <tbody>
+            {categories.map((cat) => (
+              <tr key={cat.expectedName} className="border-b transition-colors last:border-b-0 hover:bg-muted/20">
+                <td className="px-4 py-2 font-medium">{cat.expectedName}</td>
+                <td className="px-3 py-2 text-center">
+                  <span className="flex items-center justify-center gap-1.5">
+                    {dot(cat.exists.passed)}
+                    <span className={cat.exists.passed ? "text-emerald-700 dark:text-emerald-400" : "text-rose-600 dark:text-rose-400"}>
+                      {String(cat.exists.actual)}
+                    </span>
+                  </span>
+                </td>
+                <td className="px-3 py-2 text-center">
+                  {cat.found ? (
+                    <span className="flex items-center justify-center gap-1.5">
+                      {dot(cat.emptyChildren.passed)}
+                      <span className={cat.emptyChildren.passed ? "font-mono text-emerald-700 dark:text-emerald-400" : "text-rose-600 dark:text-rose-400"}>
+                        {String(cat.emptyChildren.actual)}
+                      </span>
+                    </span>
+                  ) : (
+                    <span className="text-muted-foreground/40">—</span>
+                  )}
+                </td>
+                <td className="px-3 py-2 text-center">
+                  {cat.passed
+                    ? <span className="rounded-full bg-emerald-50 px-2 py-0.5 font-mono text-[10px] font-semibold text-emerald-600 dark:bg-emerald-950/30 dark:text-emerald-400">OK</span>
+                    : <span className="rounded-full bg-rose-50 px-2 py-0.5 font-mono text-[10px] font-semibold text-rose-600 dark:bg-rose-950/30 dark:text-rose-400">Error</span>
+                  }
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+
+      {/* ── Códigos EFC (idnumbers) ── */}
+      <div className="flex items-center gap-3 px-5 pt-3 pb-1 border-t">
+        <span className="text-[10px] font-semibold uppercase tracking-widest text-muted-foreground/60">Códigos EFC requeridos</span>
+        <div className="h-px flex-1 bg-border/50" />
+      </div>
+      <div className="space-y-0.5 px-2 pb-2 pt-1">
+        {Object.values(efcChecks).map((check, idx) => (
+          <CheckRow key={idx} check={check} index={idx} />
+        ))}
+      </div>
+
+      {/* ── Categorías encontradas (detalle idnumber) ── */}
+      <div className="flex items-center gap-3 px-5 pt-2 pb-1 border-t">
+        <span className="text-[10px] font-semibold uppercase tracking-widest text-muted-foreground/60">Categorías encontradas</span>
+        <div className="h-px flex-1 bg-border/50" />
+      </div>
+      {categoryItems.length === 0 ? (
+        <p className="px-5 py-4 text-xs text-muted-foreground">No se encontraron categorías en el libro de calificaciones.</p>
+      ) : (
+        <div className="overflow-x-auto pb-3">
+          <table className="w-full text-xs">
+            <thead>
+              <tr className="border-b bg-muted/20">
+                <th className="px-4 py-2 text-left font-semibold uppercase tracking-widest text-muted-foreground">ID</th>
+                <th className="px-3 py-2 text-left font-semibold uppercase tracking-widest text-muted-foreground">Nombre</th>
+                <th className="px-3 py-2 text-left font-semibold uppercase tracking-widest text-muted-foreground">Número ID</th>
+                <th className="px-3 py-2 text-center font-semibold uppercase tracking-widest text-muted-foreground">Estado</th>
+              </tr>
+            </thead>
+            <tbody>
+              {categoryItems.map((item) => (
+                <tr key={item.itemId} className="border-b transition-colors last:border-b-0 hover:bg-muted/20">
+                  <td className="px-4 py-2">
+                    <code className="rounded bg-muted px-1.5 py-0.5 font-mono text-[11px] text-muted-foreground">{item.itemId}</code>
+                  </td>
+                  <td className="px-3 py-2 font-medium text-muted-foreground">{item.itemname || "—"}</td>
+                  <td className="px-3 py-2">
+                    {item.idnumber
+                      ? <code className="rounded bg-muted px-1.5 py-0.5 font-mono text-[11px] font-semibold">{item.idnumber}</code>
+                      : <span className="text-rose-500 italic">(vacío)</span>
+                    }
+                  </td>
+                  <td className="px-3 py-2 text-center">
+                    {item.hasIdnumber.passed
+                      ? <span className="rounded-full bg-emerald-50 px-2 py-0.5 font-mono text-[10px] font-semibold text-emerald-600 dark:bg-emerald-950/30 dark:text-emerald-400">OK</span>
+                      : <span className="rounded-full bg-rose-50 px-2 py-0.5 font-mono text-[10px] font-semibold text-rose-600 dark:bg-rose-950/30 dark:text-rose-400">Sin ID</span>
+                    }
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ── Category Section ──────────────────────────────────────────────────────────
 
 interface CategorySectionProps {
@@ -454,7 +589,7 @@ export function CourseContentValidator({ result }: CourseContentValidatorProps) 
   const [openCategory,  setOpenCategory]  = useState<"presentacion" | "calificaciones" | null>("presentacion");
   const [openAccordion, setOpenAccordion] = useState<string | null>("page");
 
-  const { professorPage, consultationForum, meeting, attendance, microcurriculum, blocks, sectionDates } = result;
+  const { professorPage, consultationForum, meeting, attendance, microcurriculum, blocks, sectionDates, gradebook } = result;
 
   // ── Derived check arrays ───────────────────────────────────────────────────
   const pageChecks            = Object.values(professorPage.checks) as ValidationCheck[];
@@ -632,7 +767,7 @@ export function CourseContentValidator({ result }: CourseContentValidatorProps) 
                   className="inline-flex items-center gap-2 rounded-lg border border-border bg-background px-3 py-1.5 text-xs font-medium shadow-xs transition-all hover:border-primary/40 hover:bg-accent"
                 >
                   <ExternalLink className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
-                  <span className="max-w-[420px] truncate font-mono text-[11px] text-muted-foreground">
+                  <span className="max-w-105 truncate font-mono text-[11px] text-muted-foreground">
                     {microcurriculum.fileUrl}
                   </span>
                 </a>
@@ -645,14 +780,41 @@ export function CourseContentValidator({ result }: CourseContentValidatorProps) 
         <CategorySection
           icon={GraduationCap}
           title="Libro de calificaciones"
-          subtitle="Validaciones del libro de calificaciones del curso"
-          passed={true}
-          passedCount={0}
-          totalCount={0}
+          subtitle="Validación de categorías EFC en el árbol de calificaciones"
+          passed={gradebook.passed}
+          passedCount={gradebook.categories.filter(c => c.passed).length}
+          totalCount={gradebook.categories.length}
           isOpen={openCategory === "calificaciones"}
           onToggle={() => toggleCategory("calificaciones")}
-          emptyLabel="Sin validaciones configuradas"
-        />
+        >
+          <AccordionItem
+            id="gradebook" icon={GraduationCap} title="Categorías del libro de calificaciones"
+            idnumber="grade_tree"
+            found={gradebook.categories.length > 0 || Object.keys(gradebook.efcChecks).length > 0}
+            passed={gradebook.passed}
+            passedCount={
+              gradebook.categories.filter(c => c.passed).length +
+              Object.values(gradebook.efcChecks).filter(c => c.passed).length +
+              gradebook.categoryItems.filter(i => i.hasIdnumber.passed).length
+            }
+            totalCount={
+              gradebook.categories.length +
+              Object.keys(gradebook.efcChecks).length +
+              gradebook.categoryItems.length
+            }
+            cmid={null}
+            isOpen={openAccordion === "gradebook"}
+            onToggle={() => toggleAccordion("gradebook")}
+            notFoundLabel="No se pudieron obtener las categorías del libro de calificaciones"
+          >
+            <GradebookBody
+              categories={gradebook.categories}
+              categoryItems={gradebook.categoryItems}
+              efcChecks={gradebook.efcChecks}
+              error={gradebook.error}
+            />
+          </AccordionItem>
+        </CategorySection>
 
       </div>
 

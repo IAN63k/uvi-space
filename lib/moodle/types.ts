@@ -265,6 +265,39 @@ export interface SectionDateCheck {
   passed: boolean;
 }
 
+export interface GradeTreeNode {
+  id: string;
+  name: string;
+  iscategory: boolean;
+  haschildcategories?: boolean;
+  children: GradeTreeNode[] | null;
+}
+
+export interface GradebookCategoryCheck {
+  expectedName: string;
+  found: boolean;
+  categoryId: string | null;
+  exists: ValidationCheck;
+  emptyChildren: ValidationCheck;
+  passed: boolean;
+}
+
+export interface GradeItem {
+  id: number;
+  itemname: string | null;
+  itemtype: string;
+  itemmodule: string | null;
+  idnumber: string;
+  categoryid: number | null;
+}
+
+export interface GradeCategoryItem {
+  itemId: number;
+  itemname: string;
+  idnumber: string;
+  hasIdnumber: ValidationCheck;
+}
+
 export interface MoodleBlock {
   instanceid: number;
   name: string;
@@ -321,6 +354,17 @@ export interface CourseContentValidationResult {
   sectionDates: {
     /** Only visible sections with section.section > 0 */
     sections: SectionDateCheck[];
+    passed: boolean;
+  };
+  gradebook: {
+    /** From core_grades_get_grade_tree: name exists + children null per EFC */
+    categories: GradebookCategoryCheck[];
+    /** From gradereport_user_get_grade_items: all category items with idnumber check */
+    categoryItems: GradeCategoryItem[];
+    /** From gradereport_user_get_grade_items: one check per required EFC code */
+    efcChecks: Record<string, ValidationCheck>;
+    /** Set when any grade endpoint was unavailable */
+    error?: string;
     passed: boolean;
   };
   passed: boolean;

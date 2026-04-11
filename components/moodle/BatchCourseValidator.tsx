@@ -55,6 +55,18 @@ function exportCsv(results: CourseContentValidationResult[], categoryName: strin
     "Asistencia visible",
     "Asistencia visible usuario",
     "Asistencia visible en página",
+    // Gradebook — árbol
+    "EFC1 nombre existe",
+    "EFC1 sin ítems",
+    "EFC2 nombre existe",
+    "EFC2 sin ítems",
+    "EFC3 nombre existe",
+    "EFC3 sin ítems",
+    // Gradebook — idnumbers
+    "Libro EFC01",
+    "Libro EFC02",
+    "Libro EFC03",
+    "Libro categorías sin ID",
     // Section dates
     "Secciones activas",
     "Secciones con fechas OK",
@@ -113,6 +125,18 @@ function exportCsv(results: CourseContentValidationResult[], categoryName: strin
       m.userVisible.passed ? "OK" : String(m.userVisible.actual),
       m.visibleOnCoursePage.passed ? "OK" : String(m.visibleOnCoursePage.actual),
       m.modplural.passed ? "OK" : String(m.modplural.actual),
+      // Gradebook — árbol
+      r.gradebook.categories[0]?.exists.passed        ? "OK" : "Ausente",
+      r.gradebook.categories[0]?.emptyChildren.passed ? "OK" : String(r.gradebook.categories[0]?.emptyChildren.actual ?? "—"),
+      r.gradebook.categories[1]?.exists.passed        ? "OK" : "Ausente",
+      r.gradebook.categories[1]?.emptyChildren.passed ? "OK" : String(r.gradebook.categories[1]?.emptyChildren.actual ?? "—"),
+      r.gradebook.categories[2]?.exists.passed        ? "OK" : "Ausente",
+      r.gradebook.categories[2]?.emptyChildren.passed ? "OK" : String(r.gradebook.categories[2]?.emptyChildren.actual ?? "—"),
+      // Gradebook — idnumbers
+      r.gradebook.efcChecks["EFC01"]?.passed ? "OK" : "Ausente",
+      r.gradebook.efcChecks["EFC02"]?.passed ? "OK" : "Ausente",
+      r.gradebook.efcChecks["EFC03"]?.passed ? "OK" : "Ausente",
+      r.gradebook.categoryItems.filter(i => !i.hasIdnumber.passed).length || "—",
       // Section dates
       r.sectionDates.sections.length,
       r.sectionDates.sections.filter((s) => s.passed).length,

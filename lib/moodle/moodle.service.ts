@@ -1,6 +1,6 @@
 import https from "node:https";
 import axios from "axios";
-import type { MoodleCategory, MoodleCourse, ValidationRules, CourseError, CourseValidationResult, CategoryNode, CourseSummary, CourseSection, CourseModuleDetail, MoodlePage, MoodleForum, MoodleBlock } from "./types";
+import type { MoodleCategory, MoodleCourse, ValidationRules, CourseError, CourseValidationResult, CategoryNode, CourseSummary, CourseSection, CourseModuleDetail, MoodlePage, MoodleForum, MoodleBlock, GradeTreeNode, GradeItem } from "./types";
 
 // Axios instance with a custom HTTPS agent that:
 // - Disables strict SSL verification (handles self-signed / intermediate certs common in .edu environments)
@@ -430,6 +430,41 @@ export async function getPagesByCourse(
     extraParams: { "courseids[0]": courseId },
   });
   return data.pages ?? [];
+}
+
+/** Fetches grade items for a course using a sample user.
+ *  The grade book structure (category names, idnumbers) is course-wide and
+ *  identical for all enrolled users — any valid userid gives the same result. */
+export async function getGradeItems(
+  moodleUrl: string,
+  token: string,
+  courseId: number,
+  userId: number,
+): Promise<GradeItem[]> {
+  const data = await apiCall<{ usergrades?: Array<{ gradeitems?: GradeItem[] }> }>({
+    moodleUrl,
+    token,
+    wsfunction: "gradereport_user_get_grade_items",
+    extraParams: { courseid: courseId, userid: userId },
+  });
+  return data.usergrades?.[0]?.gradeitems ?? [];
+}
+
+/** Fetches the grade tree for a course (category names and hierarchy).
+ *  Note: core_grades_get_grade_tree returns the tree as a JSON-encoded string,
+ *  not as a parsed object — this function handles that transparently. */
+export async function getGradeTree(
+  moodleUrl: string,
+  token: string,
+  courseId: number,
+): Promise<GradeTreeNode> {
+  const raw = await apiCall<GradeTreeNode | string>({
+    moodleUrl,
+    token,
+    wsfunction: "core_grades_get_grade_tree",
+    extraParams: { courseid: courseId },
+  });
+  return typeof raw === "string" ? (JSON.parse(raw) as GradeTreeNode) : raw;
 }
 
 /** Fetches all sidebar blocks configured for a course. */
