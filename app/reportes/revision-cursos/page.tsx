@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   CheckCircle2, XCircle, ChevronRight, ChevronDown, Folder, BookOpen,
-  X, Settings2, ExternalLink, AlertTriangle,
+  X, Settings2, ExternalLink, AlertTriangle, Wrench, Check, Loader2,
 } from "lucide-react";
 
 import { ReportTableControls } from "@/components/report-table-controls";
@@ -21,7 +21,7 @@ import {
   localStorageKey,
   type RulesConfig,
 } from "@/lib/moodle/rules";
-import type { CategoryNode, CourseValidationResult, CourseSummary, RevisionCursosResponse } from "@/lib/moodle/types";
+import type { CategoryNode, CourseError, CourseValidationResult, CourseSummary, RevisionCursosResponse } from "@/lib/moodle/types";
 
 // ── Column types ─────────────────────────────────────────────────────────────
 
@@ -99,6 +99,354 @@ function formatValue(field: string, value: string | number | boolean | null | un
   if (field === "summaryformat" && typeof normalized === "number") return formatSummaryFormat(normalized);
   if (field === "fullname_contains") return `contiene "${normalized}"`;
   return String(normalized);
+}
+
+// ── Field Fix Map ─────────────────────────────────────────────────────────────
+
+type FieldFixMode = "apply" | "text" | "number" | "date" | "fullname-edit";
+
+interface FieldFixConfig {
+  apiField: string;
+  mode: FieldFixMode;
+}
+
+const FIELD_FIX_MAP: Record<string, FieldFixConfig | null> = {
+  visible:           { apiField: "visible",          mode: "apply"        },
+  enablecompletion:  { apiField: "enablecompletion",  mode: "apply"        },
+  showgrades:        { apiField: "showgrades",        mode: "apply"        },
+  showreports:       { apiField: "showreports",       mode: "apply"        },
+  groupmodeforce:    { apiField: "groupmodeforce",    mode: "apply"        },
+  completionnotify:  { apiField: "completionnotify",  mode: "apply"        },
+  format:            { apiField: "format",            mode: "text"         },
+  lang:              { apiField: "lang",              mode: "text"         },
+  shortname_exists:  { apiField: "shortname",         mode: "text"         },
+  idnumber_exists:   { apiField: "idnumber",          mode: "text"         },
+  maxbytes:          { apiField: "maxbytes",          mode: "number"       },
+  newsitems:         { apiField: "newsitems",         mode: "number"       },
+  groupmode:         { apiField: "groupmode",         mode: "number"       },
+  summaryformat:     { apiField: "summaryformat",     mode: "number"       },
+  fullname_contains: { apiField: "fullname",          mode: "fullname-edit" },
+  startdate_exists:  { apiField: "startdate",         mode: "date"         },
+  enddate_exists:    { apiField: "enddate",           mode: "date"         },
+  startdate_min:     { apiField: "startdate",         mode: "date"         },
+  enddate_max:       { apiField: "enddate",           mode: "date"         },
+  showactivitydates:        null,
+  showcompletionconditions: null,
+};
+
+// ── Error Fix Card ────────────────────────────────────────────────────────────
+
+function ErrorFixCard({
+  err,
+  course,
+  moodleConfig,
+  onFixed,
+}: {
+  err: CourseError;
+  course: CourseValidationResult;
+  moodleConfig?: { moodleUrl: string; token: string };
+  onFixed: (apiField: string, newValue: string | number) => void;
+}) {
+  const fixConfig = FIELD_FIX_MAP[err.field];
+  const canFix = !!fixConfig && !!moodleConfig;
+
+  /** Formatea un timestamp Unix a YYYY-MM-DD en hora local (evita desfase UTC) */
+  const tsToLocalDateStr = (ts: number): string => {
+    const d = new Date(ts * 1000);
+    return [
+      d.getFullYear(),
+      String(d.getMonth() + 1).padStart(2, "0"),
+      String(d.getDate()).padStart(2, "0"),
+    ].join("-");
+  };
+
+  /** Convierte YYYY-MM-DD a timestamp Unix usando mediodía local (evita problemas de zona horaria) */
+  const localDateStrToTs = (dateStr: string): number => {
+    const [y, m, d] = dateStr.split("-").map(Number);
+    return Math.floor(new Date(y, m - 1, d, 12, 0, 0).getTime() / 1000);
+  };
+
+  const today = new Date();
+  const todayStr = [
+    today.getFullYear(),
+    String(today.getMonth() + 1).padStart(2, "0"),
+    String(today.getDate()).padStart(2, "0"),
+  ].join("-");
+
+  const getInitialValue = (): string => {
+    if (!fixConfig) return "";
+    switch (fixConfig.mode) {
+      case "apply": return String(err.expected);
+      case "fullname-edit": return course.fullname;
+      case "text":
+        if (fixConfig.apiField === "shortname") return course.shortname;
+        if (fixConfig.apiField === "idnumber") return course.idnumber ?? "";
+        return String(err.expected);
+      case "number": return String(err.expected);
+      case "date": {
+        // Para _max/_min: pre-rellenar con la fecha límite esperada
+        if (err.field === "enddate_max" || err.field === "startdate_min") {
+          const expectedTs = typeof err.expected === "number" ? err.expected : null;
+          if (expectedTs) return tsToLocalDateStr(expectedTs);
+        }
+        // Para _exists: usar la fecha actual del curso si existe, si no hoy
+        const ts = fixConfig.apiField === "startdate" ? course.startdate : course.enddate;
+        if (ts) return tsToLocalDateStr(ts);
+        return todayStr;
+      }
+      default: return String(err.expected);
+    }
+  };
+
+  const isEndDateField = fixConfig?.apiField === "enddate";
+  const needsStartDate = isEndDateField && !course.startdate;
+
+  const [open, setOpen] = useState(false);
+  const [value, setValue] = useState("");
+  const [startdateValue, setStartdateValue] = useState("");
+  const [loading, setLoading] = useState(false);
+  const [success, setSuccess] = useState(false);
+  const [fixError, setFixError] = useState<string | null>(null);
+
+  const handleOpen = () => {
+    setValue(getInitialValue());
+    setStartdateValue(todayStr);
+    setFixError(null);
+    setOpen(true);
+  };
+
+  const handleSubmit = async () => {
+    if (!fixConfig || !moodleConfig) return;
+    setLoading(true);
+    setFixError(null);
+
+    let finalValue: string | number;
+    if (fixConfig.mode === "apply") {
+      const raw = err.expected;
+      finalValue = typeof raw === "boolean" ? (raw ? 1 : 0) : Number(raw);
+    } else if (fixConfig.mode === "date") {
+      finalValue = localDateStrToTs(value);
+    } else if (fixConfig.mode === "number") {
+      finalValue = Number(value);
+    } else {
+      finalValue = value;
+    }
+
+    // Si es enddate y el curso no tiene startdate, enviar ambas en la misma llamada
+    const updates: Record<string, string | number> = { [fixConfig.apiField]: finalValue };
+    if (needsStartDate && startdateValue) {
+      updates["startdate"] = localDateStrToTs(startdateValue);
+    }
+
+    try {
+      const res = await fetch("/api/moodle/update-course", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          moodleUrl: moodleConfig.moodleUrl,
+          token: moodleConfig.token,
+          courseId: course.id,
+          updates,
+        }),
+      });
+
+      const data = (await res.json()) as { message?: string; warnings?: { warningcode: string; message: string }[] };
+      if (!res.ok) throw new Error(data.message ?? "Error al actualizar el curso en Moodle");
+
+      // Moodle puede retornar success:true pero con warnings que indican que NO se aplicó el cambio
+      if (data.warnings && data.warnings.length > 0) {
+        const warnMsg = data.warnings.map((w) => w.message).join(" ");
+        throw new Error(warnMsg);
+      }
+
+      setSuccess(true);
+      setOpen(false);
+      onFixed(fixConfig.apiField, finalValue);
+      if (needsStartDate && startdateValue) {
+        onFixed("startdate", updates["startdate"]);
+      }
+    } catch (e) {
+      setFixError(e instanceof Error ? e.message : "Error inesperado al contactar la API");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <div
+      className={`overflow-hidden rounded-lg border transition-colors duration-300 ${
+        success
+          ? "border-emerald-300 bg-emerald-50/50 dark:border-emerald-800/60 dark:bg-emerald-950/10"
+          : "border-rose-200 bg-rose-50/50 dark:border-rose-900/40 dark:bg-rose-950/10"
+      }`}
+    >
+      {/* Header */}
+      <div
+        className={`flex items-center gap-2 border-b px-3 py-1.5 ${
+          success
+            ? "border-emerald-200/60 bg-emerald-100/50 dark:border-emerald-900/30 dark:bg-emerald-950/20"
+            : "border-rose-200/60 bg-rose-100/50 dark:border-rose-900/30 dark:bg-rose-950/20"
+        }`}
+      >
+        {success ? (
+          <Check className="h-3 w-3 shrink-0 text-emerald-600" />
+        ) : (
+          <AlertTriangle className="h-3 w-3 shrink-0 text-rose-600" />
+        )}
+        <p
+          className={`text-xs font-semibold ${
+            success
+              ? "text-emerald-900 line-through opacity-60 dark:text-emerald-300"
+              : "text-rose-900 dark:text-rose-300"
+          }`}
+        >
+          {getFieldLabel(err.field)}
+        </p>
+        {success && (
+          <span className="rounded-full bg-emerald-200 px-1.5 py-0.5 text-[10px] font-semibold text-emerald-800 dark:bg-emerald-900/50 dark:text-emerald-300">
+            ✓ Actualizado
+          </span>
+        )}
+        <span
+          className={`ml-auto font-mono text-[10px] ${
+            success ? "text-emerald-600/60 dark:text-emerald-400/60" : "text-rose-600/70 dark:text-rose-400/70"
+          }`}
+        >
+          {err.field}
+        </span>
+      </div>
+
+      {/* Expected vs actual + fix trigger */}
+      <div className="flex flex-wrap items-center gap-2 px-3 py-2 text-xs">
+        <div className="flex flex-col gap-0.5">
+          <span className="text-[10px] text-muted-foreground">Esperado</span>
+          <span className="rounded-full border border-emerald-300 bg-emerald-100 px-2 py-0.5 font-mono text-emerald-800 dark:border-emerald-800 dark:bg-emerald-950 dark:text-emerald-300">
+            {formatValue(err.field, err.expected)}
+          </span>
+        </div>
+        <span className="text-muted-foreground">→</span>
+        <div className="flex flex-col gap-0.5">
+          <span className="text-[10px] text-muted-foreground">Actual</span>
+          <span className="rounded-full border border-rose-300 bg-rose-100 px-2 py-0.5 font-mono text-rose-800 dark:border-rose-800 dark:bg-rose-950 dark:text-rose-300">
+            {formatValue(err.field, err.actual)}
+          </span>
+        </div>
+        {!success && canFix && !open && (
+          <button
+            type="button"
+            onClick={handleOpen}
+            className="ml-auto flex items-center gap-1 rounded border border-amber-300 bg-amber-50 px-2 py-0.5 text-[11px] font-medium text-amber-800 transition-colors hover:bg-amber-100 dark:border-amber-700/50 dark:bg-amber-950/20 dark:text-amber-400 dark:hover:bg-amber-950/40"
+          >
+            <Wrench className="h-2.5 w-2.5" />
+            Corregir
+          </button>
+        )}
+      </div>
+
+      {/* Fix Panel */}
+      {!success && open && (
+        <div className="border-t border-amber-200/60 bg-amber-50/60 px-3 py-2.5 dark:border-amber-800/30 dark:bg-amber-950/10">
+          {fixConfig?.mode === "apply" ? (
+            <div className="mb-2 flex items-center gap-2">
+              <span className="text-[11px] text-amber-800 dark:text-amber-400">Valor a aplicar:</span>
+              <span className="rounded border border-emerald-300 bg-emerald-50 px-2 py-0.5 font-mono text-[11px] text-emerald-800 dark:border-emerald-800 dark:bg-emerald-950/50 dark:text-emerald-300">
+                {formatValue(err.field, err.expected)}
+              </span>
+            </div>
+          ) : fixConfig?.mode === "fullname-edit" ? (
+            <div className="mb-2">
+              <p className="mb-1 text-[10px] font-medium text-amber-800 dark:text-amber-400">Nombre completo del curso:</p>
+              <input
+                type="text"
+                value={value}
+                onChange={(e) => setValue(e.target.value)}
+                className="w-full rounded border border-amber-200 bg-white px-2 py-1 font-mono text-xs focus:outline-none focus:ring-1 focus:ring-amber-400 dark:border-amber-800/40 dark:bg-background"
+              />
+            </div>
+          ) : fixConfig?.mode === "date" ? (
+            <div className="mb-2 space-y-2">
+              {/* Si enddate sin startdate: mostrar primero el aviso y el input de startdate */}
+              {needsStartDate && (
+                <div className="rounded-md border border-orange-200 bg-orange-50/80 px-2.5 py-2 dark:border-orange-800/40 dark:bg-orange-950/20">
+                  <p className="mb-1.5 text-[10px] font-semibold text-orange-800 dark:text-orange-400">
+                    Moodle requiere una fecha de inicio para poder establecer la fecha de finalización.
+                  </p>
+                  <label className="mb-0.5 block text-[10px] font-medium text-orange-800 dark:text-orange-400">
+                    Fecha de inicio del curso:
+                  </label>
+                  <input
+                    type="date"
+                    value={startdateValue}
+                    onChange={(e) => setStartdateValue(e.target.value)}
+                    className="rounded border border-orange-200 bg-white px-2 py-1 font-mono text-xs focus:outline-none focus:ring-1 focus:ring-orange-400 dark:border-orange-800/40 dark:bg-background"
+                  />
+                </div>
+              )}
+              <div>
+                <p className="mb-1 text-[10px] font-medium text-amber-800 dark:text-amber-400">
+                  {err.field === "enddate_exists" ? "Fecha de finalización:" :
+                   err.field === "startdate_exists" ? "Fecha de inicio:" :
+                   err.field === "enddate_max" ? "Ajustar a una fecha igual o anterior al límite:" :
+                   err.field === "startdate_min" ? "Ajustar a una fecha igual o posterior al límite:" :
+                   "Nueva fecha:"}
+                </p>
+                <input
+                  type="date"
+                  value={value}
+                  onChange={(e) => setValue(e.target.value)}
+                  className="rounded border border-amber-200 bg-white px-2 py-1 font-mono text-xs focus:outline-none focus:ring-1 focus:ring-amber-400 dark:border-amber-800/40 dark:bg-background"
+                />
+              </div>
+            </div>
+          ) : fixConfig?.mode === "number" ? (
+            <div className="mb-2">
+              <p className="mb-1 text-[10px] font-medium text-amber-800 dark:text-amber-400">Nuevo valor:</p>
+              <input
+                type="number"
+                value={value}
+                onChange={(e) => setValue(e.target.value)}
+                className="w-28 rounded border border-amber-200 bg-white px-2 py-1 font-mono text-xs focus:outline-none focus:ring-1 focus:ring-amber-400 dark:border-amber-800/40 dark:bg-background"
+              />
+            </div>
+          ) : (
+            <div className="mb-2">
+              <p className="mb-1 text-[10px] font-medium text-amber-800 dark:text-amber-400">Nuevo valor:</p>
+              <input
+                type="text"
+                value={value}
+                onChange={(e) => setValue(e.target.value)}
+                className="w-full rounded border border-amber-200 bg-white px-2 py-1 font-mono text-xs focus:outline-none focus:ring-1 focus:ring-amber-400 dark:border-amber-800/40 dark:bg-background"
+              />
+            </div>
+          )}
+
+          {fixError && (
+            <p className="mb-1.5 text-[11px] text-rose-600 dark:text-rose-400">{fixError}</p>
+          )}
+
+          <div className="flex gap-1.5">
+            <button
+              type="button"
+              onClick={() => void handleSubmit()}
+              disabled={loading}
+              className="flex items-center gap-1 rounded-md bg-amber-600 px-3 py-1 text-[11px] font-semibold text-white transition-colors hover:bg-amber-700 disabled:opacity-50"
+            >
+              {loading ? <Loader2 className="h-3 w-3 animate-spin" /> : <Check className="h-3 w-3" />}
+              {loading ? "Aplicando…" : "Aplicar cambio"}
+            </button>
+            <button
+              type="button"
+              onClick={() => setOpen(false)}
+              disabled={loading}
+              className="rounded-md border border-amber-200 px-3 py-1 text-[11px] text-amber-800 transition-colors hover:bg-amber-100 disabled:opacity-50 dark:border-amber-800/40 dark:text-amber-400"
+            >
+              Cancelar
+            </button>
+          </div>
+        </div>
+      )}
+    </div>
+  );
 }
 
 // ── SVG Pie Chart ─────────────────────────────────────────────────────────────
@@ -351,9 +699,13 @@ function MetaSection({ title, children }: { title: string; children: React.React
 function CourseDetailSidebar({
   course,
   onClose,
+  moodleConfig,
+  onFixSuccess,
 }: {
   course: CourseValidationResult | null;
   onClose: () => void;
+  moodleConfig?: { moodleUrl: string; token: string };
+  onFixSuccess?: (courseId: number, apiField: string, newValue: string | number) => void;
 }) {
   const open = course !== null;
 
@@ -479,6 +831,12 @@ function CourseDetailSidebar({
               {/* ── Validación de reglas ── */}
               <section>
                 <h3 className="mb-3 text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Validación de reglas</h3>
+                {!moodleConfig && course.errors.length > 0 && (
+                  <div className="mb-3 flex items-center gap-2 rounded-md border border-amber-200 bg-amber-50/80 px-3 py-2 text-[11px] text-amber-800 dark:border-amber-800/40 dark:bg-amber-950/20 dark:text-amber-400">
+                    <AlertTriangle className="h-3 w-3 shrink-0" />
+                    Configura la conexión a Moodle en Ajustes para poder corregir errores directamente.
+                  </div>
+                )}
                 {course.errors.length === 0 ? (
                   <div className="flex items-center gap-3 rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-3 dark:border-emerald-900/50 dark:bg-emerald-950/20">
                     <CheckCircle2 className="h-4 w-4 shrink-0 text-emerald-600" />
@@ -489,30 +847,13 @@ function CourseDetailSidebar({
                 ) : (
                   <div className="space-y-2">
                     {course.errors.map((err) => (
-                      <div key={err.field} className="overflow-hidden rounded-lg border border-rose-200 bg-rose-50/50 dark:border-rose-900/40 dark:bg-rose-950/10">
-                        {/* Error header */}
-                        <div className="flex items-center gap-2 border-b border-rose-200/60 bg-rose-100/50 px-3 py-1.5 dark:border-rose-900/30 dark:bg-rose-950/20">
-                          <AlertTriangle className="h-3 w-3 shrink-0 text-rose-600" />
-                          <p className="text-xs font-semibold text-rose-900 dark:text-rose-300">{getFieldLabel(err.field)}</p>
-                          <span className="ml-auto font-mono text-[10px] text-rose-600/70 dark:text-rose-400/70">{err.field}</span>
-                        </div>
-                        {/* Expected vs actual */}
-                        <div className="flex flex-wrap items-center gap-2 px-3 py-2 text-xs">
-                          <div className="flex flex-col gap-0.5">
-                            <span className="text-[10px] text-muted-foreground">Esperado</span>
-                            <span className="rounded-full border border-emerald-300 bg-emerald-100 px-2 py-0.5 font-mono text-emerald-800 dark:border-emerald-800 dark:bg-emerald-950 dark:text-emerald-300">
-                              {formatValue(err.field, err.expected)}
-                            </span>
-                          </div>
-                          <span className="text-muted-foreground">→</span>
-                          <div className="flex flex-col gap-0.5">
-                            <span className="text-[10px] text-muted-foreground">Actual</span>
-                            <span className="rounded-full border border-rose-300 bg-rose-100 px-2 py-0.5 font-mono text-rose-800 dark:border-rose-800 dark:bg-rose-950 dark:text-rose-300">
-                              {formatValue(err.field, err.actual)}
-                            </span>
-                          </div>
-                        </div>
-                      </div>
+                      <ErrorFixCard
+                        key={err.field}
+                        err={err}
+                        course={course}
+                        moodleConfig={moodleConfig}
+                        onFixed={(apiField, newValue) => onFixSuccess?.(course.id, apiField, newValue)}
+                      />
                     ))}
                   </div>
                 )}
@@ -531,6 +872,7 @@ const COURSE_FN = API_FUNCTIONS.find((f) => f.wsfunction === "core_course_get_co
 
 export default function RevisionCursosPage() {
   const [moodleConfigLoaded, setMoodleConfigLoaded] = useState(false);
+  const [moodleConfig, setMoodleConfig] = useState<{ moodleUrl: string; token: string } | null>(null);
   const [rulesConfig, setRulesConfig] = useState<RulesConfig | null>(null);
   const [settingsOpen, setSettingsOpen] = useState(false);
 
@@ -564,7 +906,9 @@ export default function RevisionCursosPage() {
       loadMoodleConfig(),
       loadEncryptedJson<RulesConfig>(localStorageKey(COURSE_FN.storageKey)),
     ]);
-    setMoodleConfigLoaded(!!(config?.token && config.moodleUrl));
+    const hasConfig = !!(config?.token && config.moodleUrl);
+    setMoodleConfigLoaded(hasConfig);
+    setMoodleConfig(hasConfig ? { moodleUrl: config!.moodleUrl, token: config!.token } : null);
     setRulesConfig(savedRules ?? buildDefaultRulesConfig(COURSE_FN));
   }, []);
 
@@ -573,6 +917,58 @@ export default function RevisionCursosPage() {
   const selectedCourse = useMemo(
     () => (selectedCourseId !== null ? payload?.results.find((r) => r.id === selectedCourseId) ?? null : null),
     [selectedCourseId, payload],
+  );
+
+  const handleFixSuccess = useCallback(
+    (courseId: number, apiField: string, newValue: string | number) => {
+      setPayload((prev) => {
+        if (!prev) return prev;
+
+        const newResults = prev.results.map((c) => {
+          if (c.id !== courseId) return c;
+
+          const newErrors = c.errors.filter((e) => {
+            const cfg = FIELD_FIX_MAP[e.field];
+            return !(cfg && cfg.apiField === apiField);
+          });
+
+          const updated: CourseValidationResult = { ...c, errors: newErrors };
+          switch (apiField) {
+            case "visible":          updated.visible          = Number(newValue); break;
+            case "format":           updated.format           = String(newValue); break;
+            case "enablecompletion": updated.enablecompletion = Number(newValue); break;
+            case "maxbytes":         updated.maxbytes         = Number(newValue); break;
+            case "lang":             updated.lang             = String(newValue); break;
+            case "showgrades":       updated.showgrades       = Number(newValue); break;
+            case "groupmode":        updated.groupmode        = Number(newValue); break;
+            case "newsitems":        updated.newsitems        = Number(newValue); break;
+            case "showreports":      updated.showreports      = Number(newValue); break;
+            case "groupmodeforce":   updated.groupmodeforce   = Number(newValue); break;
+            case "completionnotify": updated.completionnotify = Number(newValue); break;
+            case "fullname":         updated.fullname         = String(newValue); break;
+            case "shortname":        updated.shortname        = String(newValue); break;
+            case "idnumber":         updated.idnumber         = String(newValue); break;
+            case "startdate":        updated.startdate        = Number(newValue); break;
+            case "enddate":          updated.enddate          = Number(newValue); break;
+          }
+          updated.status = newErrors.length === 0 ? "OK" : "FAIL";
+          return updated;
+        });
+
+        const newOk = newResults.filter((r) => r.status === "OK").length;
+        const newFallos = newResults.filter((r) => r.status === "FAIL").length;
+
+        const newErrorsByField: Record<string, number> = {};
+        newResults.forEach((r) =>
+          r.errors.forEach((e) => {
+            newErrorsByField[e.field] = (newErrorsByField[e.field] ?? 0) + 1;
+          }),
+        );
+
+        return { ...prev, results: newResults, ok: newOk, fallos: newFallos, errorsByField: newErrorsByField };
+      });
+    },
+    [],
   );
 
   const filteredResults = useMemo(() => {
@@ -639,6 +1035,13 @@ export default function RevisionCursosPage() {
     setError(null);
     setPayload(null);
 
+    const parsedCategoryId = Number(categoryId);
+    if (!categoryId.trim() || Number.isNaN(parsedCategoryId) || parsedCategoryId <= 0) {
+      setError("Debes ingresar un ID de categoría válido para ejecutar la validación.");
+      setLoading(false);
+      return;
+    }
+
     const config = await loadMoodleConfig();
     if (!config?.token || !config.moodleUrl) {
       setError("Configura el Token y la URL de Moodle en Ajustes antes de ejecutar.");
@@ -655,7 +1058,7 @@ export default function RevisionCursosPage() {
         body: JSON.stringify({
           moodleUrl: config.moodleUrl,
           token: config.token,
-          categoryId: categoryId ? Number(categoryId) : undefined,
+          categoryId: parsedCategoryId,
           rules: activeRules,
         }),
       });
@@ -757,23 +1160,25 @@ export default function RevisionCursosPage() {
         <CardHeader>
           <CardTitle>Ejecutar validación</CardTitle>
           <CardDescription>
-            Filtra por ID de categoría o deja vacío para validar todos los cursos.
+            Ingresa el ID de categoría para ejecutar la validación.
           </CardDescription>
         </CardHeader>
         <CardContent>
           <form className="flex flex-wrap items-end gap-3" onSubmit={(e) => void onSubmit(e)}>
             <div className="w-full space-y-1.5 sm:max-w-64">
-              <Label htmlFor="categoryId">ID de categoría <span className="text-muted-foreground">(opcional)</span></Label>
+              <Label htmlFor="categoryId">ID de categoría <span className="text-destructive">*</span></Label>
               <input
                 id="categoryId"
                 type="number"
                 value={categoryId}
                 onChange={(e) => setCategoryId(e.target.value)}
-                placeholder="Ej: 42 — vacío para todos"
+                placeholder="Ej: 42"
+                required
+                min={1}
                 className="flex h-9 w-full rounded-md border border-input bg-background px-3 py-1 font-mono text-sm shadow-xs focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
               />
             </div>
-            <Button type="submit" disabled={loading || !moodleConfigLoaded}>
+            <Button type="submit" disabled={loading || !moodleConfigLoaded || !categoryId.trim()}>
               {loading ? "Consultando API..." : "Ejecutar validación"}
             </Button>
             {!moodleConfigLoaded && (
@@ -1004,7 +1409,12 @@ export default function RevisionCursosPage() {
       )}
 
       {/* ── Course Detail Sidebar ── */}
-      <CourseDetailSidebar course={selectedCourse ?? null} onClose={() => setSelectedCourseId(null)} />
+      <CourseDetailSidebar
+        course={selectedCourse ?? null}
+        onClose={() => setSelectedCourseId(null)}
+        moodleConfig={moodleConfig ?? undefined}
+        onFixSuccess={handleFixSuccess}
+      />
 
       {/* ── Settings Sidebar ── */}
       <SettingsSidebar

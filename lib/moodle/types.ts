@@ -145,3 +145,237 @@ export interface RevisionCursosResponse {
   categoryTree: CategoryNode[];
   message?: string;
 }
+
+// ── Content Validation Types ─────────────────────────────────────────────────
+
+export interface CourseSection {
+  id: number;
+  name: string;
+  visible: number;
+  summary: string;
+  section: number;
+  hiddenbynumsections: number;
+  uservisible: boolean;
+  modules: CourseModule[];
+}
+
+export interface ModuleContent {
+  /** "file" for uploaded files, "url" for external links */
+  type: string;
+  filename: string;
+  fileurl: string;
+  mimetype?: string;
+  filesize?: number;
+}
+
+export interface CourseModule {
+  id: number;
+  name: string;
+  instance: number;
+  contextid: number;
+  visible: number;
+  uservisible: boolean;
+  visibleoncoursepage: number;
+  modname: string;
+  modplural?: string;
+  onclick?: string;
+  completion: number;
+  availability: string | null;
+  idnumber?: string;
+  contents?: ModuleContent[];
+}
+
+export interface CourseModuleDetail {
+  id: number;
+  course: number;
+  name: string;
+  idnumber: string;
+  visible: number;
+  visibleoncoursepage: number;
+}
+
+export interface MoodlePage {
+  id: number;
+  course: number;
+  name: string;
+  intro: string;
+  content: string;
+  contentformat: number;
+  timemodified: number;
+}
+
+export interface MoodleForum {
+  id: number;
+  course: number;
+  name: string;
+  /** "general" | "news" | "single" | "eachuser" | "blog" | "qanda" */
+  type: string;
+  intro: string;
+  cmid: number;
+  timemodified: number;
+}
+
+export interface ValidationCheck {
+  passed: boolean;
+  expected: string | number | boolean;
+  actual: string | number | boolean | null;
+  label: string;
+}
+
+export interface ProfessorPageChecks {
+  visible: ValidationCheck;
+  visibleOnCoursePage: ValidationCheck;
+  hasName: ValidationCheck;
+  idnumber: ValidationCheck;
+  hasContent: ValidationCheck;
+}
+
+export interface ForumChecks {
+  visible: ValidationCheck;
+  visibleOnCoursePage: ValidationCheck;
+  idnumber: ValidationCheck;
+  forumType: ValidationCheck;
+}
+
+export interface MeetingChecks {
+  visible: ValidationCheck;
+  userVisible: ValidationCheck;
+  visibleOnCoursePage: ValidationCheck;
+  modplural: ValidationCheck;
+}
+
+export interface AttendanceChecks {
+  visible: ValidationCheck;
+  userVisible: ValidationCheck;
+  visibleOnCoursePage: ValidationCheck;
+}
+
+export interface MicrocurriculumChecks {
+  visible: ValidationCheck;
+  userVisible: ValidationCheck;
+  visibleOnCoursePage: ValidationCheck;
+  hasDocument: ValidationCheck;
+}
+
+export interface SectionDateCheck {
+  sectionNumber: number;
+  sectionName: string;
+  hasStartDate: ValidationCheck;
+  hasEndDate: ValidationCheck;
+  passed: boolean;
+}
+
+export interface GradeTreeNode {
+  id: string;
+  name: string;
+  iscategory: boolean;
+  haschildcategories?: boolean;
+  children: GradeTreeNode[] | null;
+}
+
+export interface GradebookCategoryCheck {
+  expectedName: string;
+  found: boolean;
+  categoryId: string | null;
+  exists: ValidationCheck;
+  emptyChildren: ValidationCheck;
+  passed: boolean;
+}
+
+export interface GradeItem {
+  id: number;
+  itemname: string | null;
+  itemtype: string;
+  itemmodule: string | null;
+  idnumber: string;
+  categoryid: number | null;
+}
+
+export interface GradeCategoryItem {
+  itemId: number;
+  itemname: string;
+  idnumber: string;
+  hasIdnumber: ValidationCheck;
+}
+
+export interface MoodleBlock {
+  instanceid: number;
+  name: string;
+  region: string;
+  weight: number;
+  visible: boolean;
+}
+
+/** One ValidationCheck per required block name */
+export type BlocksChecks = Record<string, ValidationCheck>;
+
+export interface CourseContentValidationResult {
+  courseId: number;
+  courseName: string;
+  courseFormat: string;
+  totalSections: number;
+  presentationSection: number;
+  professorPage: {
+    found: boolean;
+    cmid: number | null;
+    checks: ProfessorPageChecks;
+    contentHtml: string | null;
+    passed: boolean;
+  };
+  consultationForum: {
+    found: boolean;
+    cmid: number | null;
+    checks: ForumChecks;
+    passed: boolean;
+  };
+  meeting: {
+    found: boolean;
+    cmid: number | null;
+    checks: MeetingChecks;
+    passed: boolean;
+  };
+  attendance: {
+    found: boolean;
+    cmid: number | null;
+    checks: AttendanceChecks;
+    passed: boolean;
+  };
+  microcurriculum: {
+    found: boolean;
+    cmid: number | null;
+    checks: MicrocurriculumChecks;
+    fileUrl: string | null;
+    passed: boolean;
+  };
+  blocks: {
+    checks: BlocksChecks;
+    passed: boolean;
+  };
+  sectionDates: {
+    /** Only visible sections with section.section > 0 */
+    sections: SectionDateCheck[];
+    passed: boolean;
+  };
+  gradebook: {
+    /** From core_grades_get_grade_tree: name exists + children null per EFC */
+    categories: GradebookCategoryCheck[];
+    /** From gradereport_user_get_grade_items: all category items with idnumber check */
+    categoryItems: GradeCategoryItem[];
+    /** From gradereport_user_get_grade_items: one check per required EFC code */
+    efcChecks: Record<string, ValidationCheck>;
+    /** Set when any grade endpoint was unavailable */
+    error?: string;
+    passed: boolean;
+  };
+  passed: boolean;
+}
+
+export interface BatchValidationResult {
+  categoryId: number;
+  categoryName: string;
+  totalCourses: number;
+  passed: number;
+  failed: number;
+  results: CourseContentValidationResult[];
+  executionTimeMs: number;
+}
