@@ -5,6 +5,7 @@ import { usePathname } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 
 import { cn } from "@/lib/utils";
+import { ThemeToggle } from "@/components/theme-toggle";
 
 type NavItem = {
   label: string;
@@ -300,8 +301,8 @@ function SidebarContent({
         </ul>
       </nav>
 
-      {/* Inicio shortcut — highlight if on root */}
-      <div className="mt-auto px-2 pb-1">
+      {/* Bottom actions: home + theme toggle */}
+      <div className="mt-auto px-2 pb-1 space-y-0.5">
         <Link
           href="/"
           title={collapsed ? "Inicio" : undefined}
@@ -319,6 +320,7 @@ function SidebarContent({
           </svg>
           {!collapsed ? "Inicio" : null}
         </Link>
+        <ThemeToggle collapsed={collapsed} />
       </div>
     </div>
   );
