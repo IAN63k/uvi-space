@@ -68,7 +68,7 @@ function LoadingSkeleton({ batch }: { batch?: boolean }) {
     <div className="space-y-4">
       <div className="flex gap-3">
         {Array.from({ length: batch ? 4 : 3 }).map((_, i) => (
-          <div key={i} className="h-[72px] flex-1 animate-pulse rounded-2xl border bg-muted/40" />
+          <div key={i} className="h-18 flex-1 animate-pulse rounded-2xl border bg-muted/40" />
         ))}
       </div>
       {batch ? (
@@ -95,7 +95,7 @@ export default function RevisionCursosContenidoPage() {
 
   // Batch mode state
   const [categoryIdInput,      setCategoryIdInput] = useState("");
-  const [includeSubcategories, setIncludeSub]      = useState(true);
+  const [includeSubcategories, setIncludeSub]      = useState(false);
   const [loadingBatch,         setLoadingBatch]    = useState(false);
   const [errorBatch,           setErrorBatch]      = useState<string | null>(null);
   const [batchResult,          setBatchResult]     = useState<BatchValidationResult | null>(null);
@@ -218,8 +218,8 @@ export default function RevisionCursosContenidoPage() {
           <>
             <form onSubmit={(e) => void handleValidateIndividual(e)}>
               <div className="rounded-2xl border bg-muted/10 p-5 shadow-xs">
-                <div className="flex flex-wrap items-end gap-4">
-                  <div className="min-w-[200px] flex-1 space-y-1.5">
+                <div className="flex flex-wrap gap-4 items-center">
+                  <div className="min-w-50 flex-1 space-y-1.5">
                     <Label
                       htmlFor="courseId"
                       className="text-xs font-semibold uppercase tracking-widest text-muted-foreground"
@@ -286,7 +286,7 @@ export default function RevisionCursosContenidoPage() {
             <form onSubmit={(e) => void handleValidateBatch(e)}>
               <div className="rounded-2xl border bg-muted/10 p-5 shadow-xs">
                 <div className="flex flex-wrap items-end gap-4">
-                  <div className="min-w-[200px] flex-1 space-y-1.5">
+                  <div className="min-w-50 flex-1 space-y-1.5">
                     <Label
                       htmlFor="categoryId"
                       className="text-xs font-semibold uppercase tracking-widest text-muted-foreground"
