@@ -8,6 +8,9 @@ import type {
   MicrocurriculumChecks,
   BlocksChecks,
   SectionDateCheck,
+  GradebookCategoryCheck,
+  GradeCategoryItem,
+  GradeTreeNode,
 } from "@/lib/moodle/types";
 import {
   getCourseContents,
@@ -15,9 +18,25 @@ import {
   getPagesByCourse,
   getForumsByCourse,
   getCourseBlocks,
+  getGradeTree,
+  getGradeItems,
 } from "@/lib/moodle/moodle.service";
 
 // ── Configurable constants ────────────────────────────────────────────────────
+
+/** Fixed sample user used to retrieve the grade book structure.
+ *  Grade category idnumbers are course-wide — any enrolled user gives the same result. */
+export const GRADEBOOK_SAMPLE_USERID = 37560;
+
+/** EFC idnumbers validated via gradereport_user_get_grade_items */
+export const REQUIRED_EFC_CODES = ["EFC01", "EFC02", "EFC03"] as const;
+
+/** EFC category names validated via core_grades_get_grade_tree */
+export const REQUIRED_EFC_NAMES = [
+  "Evaluación Formativa y Continua 1",
+  "Evaluación Formativa y Continua 2",
+  "Evaluación Formativa y Continua 3",
+] as const;
 
 export const REQUIRED_BLOCKS = [
   "badges",
@@ -183,11 +202,26 @@ export async function validateCourseContent(
   const expectedForumType     = CONTENT_VALIDATION_CONSTANTS.EXPECTED_FORUM_TYPE;
 
   // --- Parallel fetch: sections + pages + forums + blocks ---------------------
+  // Grade tree and grade items are fetched separately to handle access errors gracefully.
   const [sections, pages, forums, courseBlocksList] = await Promise.all([
     getCourseContents(moodleUrl, token, courseId),
     getPagesByCourse(moodleUrl, token, courseId),
     getForumsByCourse(moodleUrl, token, courseId),
     getCourseBlocks(moodleUrl, token, courseId),
+  ]);
+
+  let gradeTree: Awaited<ReturnType<typeof getGradeTree>> | null = null;
+  let gradeTreeError: string | null = null;
+  let allGradeItems: Awaited<ReturnType<typeof getGradeItems>> = [];
+  let gradeItemsError: string | null = null;
+
+  await Promise.all([
+    getGradeTree(moodleUrl, token, courseId)
+      .then((t) => { gradeTree = t; console.log("[core_grades_get_grade_tree]", JSON.stringify(t, null, 2)); })
+      .catch((err) => { gradeTreeError = err instanceof Error ? err.message : "Error desconocido"; }),
+    getGradeItems(moodleUrl, token, courseId, GRADEBOOK_SAMPLE_USERID)
+      .then((items) => { allGradeItems = items; })
+      .catch((err) => { gradeItemsError = err instanceof Error ? err.message : "Error desconocido"; }),
   ]);
 
   // --- Rule 1: Count real sections (section index > 0) ----------------------
@@ -570,6 +604,102 @@ export async function validateCourseContent(
     return { sections: sectionChecks, passed };
   })();
 
+  // ── Gradebook categories validation ───────────────────────────────────────
+
+  const gradebookResult: CourseContentValidationResult["gradebook"] = (() => {
+    const combinedError = gradeTreeError ?? gradeItemsError ?? undefined;
+    const normalize = (s: string) =>
+      s.trim().normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().replace(/\s+/g, " ");
+
+    // ── Grade tree: name + empty-children checks ──────────────────────────────
+    const rootChildren = ((gradeTree as GradeTreeNode | null)?.children ?? []).filter((n: GradeTreeNode) => n.iscategory);
+
+    const categories: GradebookCategoryCheck[] = REQUIRED_EFC_NAMES.map((expectedName) => {
+      if (gradeTreeError !== null) {
+        return {
+          expectedName,
+          found: false,
+          categoryId: null,
+          exists:        makeCheck(false, "presente", `(error: ${gradeTreeError})`, `Categoría "${expectedName}"`),
+          emptyChildren: makeCheck(false, "null",     null,                          "Sin ítems en la categoría"),
+          passed: false,
+        };
+      }
+
+      const normalizedExpected = normalize(expectedName);
+      const match = rootChildren.find((n: typeof rootChildren[0]) => normalize(n.name) === normalizedExpected);
+
+      const exists = makeCheck(
+        match !== undefined,
+        "presente",
+        match !== undefined ? "presente" : "ausente",
+        `Categoría "${expectedName}"`,
+      );
+
+      const hasChildren =
+        match !== undefined &&
+        Array.isArray(match.children) &&
+        match.children.length > 0;
+
+      const emptyChildren = makeCheck(
+        !hasChildren,
+        "null",
+        hasChildren ? `${match!.children!.length} ítem(s)` : "null",
+        "Sin ítems dentro de la categoría",
+      );
+
+      return {
+        expectedName,
+        found: match !== undefined,
+        categoryId: match?.id ?? null,
+        exists,
+        emptyChildren,
+        passed: exists.passed && emptyChildren.passed,
+      };
+    });
+
+    // ── Grade items: EFC idnumber checks ─────────────────────────────────────
+    const categoryGradeItems = allGradeItems.filter((item) => item.itemtype === "category");
+
+    const categoryItems: GradeCategoryItem[] = categoryGradeItems.map((item) => {
+      const hasId = (item.idnumber ?? "").trim().length > 0;
+      return {
+        itemId:   item.id,
+        itemname: item.itemname ?? `Categoría ${item.id}`,
+        idnumber: item.idnumber ?? "",
+        hasIdnumber: makeCheck(
+          hasId,
+          "no vacío",
+          hasId ? item.idnumber : "(vacío)",
+          "Tiene número ID",
+        ),
+      };
+    });
+
+    const presentCodes = new Set(categoryGradeItems.map((item) => item.idnumber?.trim()));
+    const efcChecks: Record<string, ValidationCheck> = Object.fromEntries(
+      REQUIRED_EFC_CODES.map((code) => {
+        const found = gradeItemsError === null && presentCodes.has(code);
+        return [
+          code,
+          makeCheck(
+            found,
+            "presente",
+            gradeItemsError !== null ? `(error: ${gradeItemsError})` : found ? "presente" : "ausente",
+            `Código ${code}`,
+          ),
+        ];
+      }),
+    );
+
+    const allCategoriesOk    = categories.every((c) => c.passed);
+    const allItemsHaveId     = categoryItems.every((i) => i.hasIdnumber.passed);
+    const allEfcPresent      = Object.values(efcChecks).every((c) => c.passed);
+    const passed             = allCategoriesOk && allItemsHaveId && allEfcPresent;
+
+    return { categories, categoryItems, efcChecks, error: combinedError, passed };
+  })();
+
   // ── Overall result ─────────────────────────────────────────────────────────
 
   const passed =
@@ -579,7 +709,8 @@ export async function validateCourseContent(
     attendanceResult.passed &&
     microcurriculumResult.passed &&
     blocksResult.passed &&
-    sectionDatesResult.passed;
+    sectionDatesResult.passed &&
+    gradebookResult.passed;
 
   return {
     courseId,
@@ -594,6 +725,7 @@ export async function validateCourseContent(
     microcurriculum: microcurriculumResult,
     blocks: blocksResult,
     sectionDates: sectionDatesResult,
+    gradebook: gradebookResult,
     passed,
   };
 }
