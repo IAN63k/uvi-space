@@ -15,7 +15,11 @@
       "WebFetch(domain:aulasvirtuales.unicamacho.edu.co)",
       "Bash(cd \"C:\\\\xampp\\\\htdocs\\\\Informes\\\\uvi-space\" && npx tsc --noEmit 2>&1 | grep -v \"alistamiento\" | head -50)",
       "Bash(cd \"C:\\\\xampp\\\\htdocs\\\\Informes\\\\uvi-space\" && npx tsc --noEmit 2>&1 | grep -v \"alistamiento\" | head -40)",
-      "Bash(cd \"C:\\\\xampp\\\\htdocs\\\\Informes\\\\uvi-space\" && npx tsc --noEmit 2>&1 | grep -v \"alistamiento\" | head -20)"
+      "Bash(cd \"C:\\\\xampp\\\\htdocs\\\\Informes\\\\uvi-space\" && npx tsc --noEmit 2>&1 | grep -v \"alistamiento\" | head -20)",
+      "Bash(cp \"D:/User/Descargas/Logo espacial UVI con cohete y planetas.png\" \"C:/xampp/htdocs/Informes/uvi-space/app/icon.png\" && cp \"D:/User/Descargas/Logo espacial UVI con cohete y planetas.png\" \"C:/xampp/htdocs/Informes/uvi-space/public/logo.png\" && echo \"OK\")",
+      "Bash(cd \"C:/xampp/htdocs/Informes/uvi-space\" && npx tsc --noEmit --project tsconfig.json 2>&1 | head -30)",
+      "Bash(cd \"C:/xampp/htdocs/Informes/uvi-space\" && npx tsc --noEmit 2>&1 | grep -E \"page\\\\.tsx|layout\\\\.tsx\" | head -20)",
+      "Bash(cd \"C:/xampp/htdocs/Informes/uvi-space\" && npx tsc --noEmit 2>&1 | grep -v \"alistamiento/page.tsx\")"
     ]
   }
 }
