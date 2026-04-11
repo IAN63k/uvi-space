@@ -8,7 +8,14 @@
       "Bash(cd \"C:\\\\xampp\\\\htdocs\\\\Informes\\\\uvi-space\" && npm install axios 2>&1 | tail -5)",
       "Bash(cd \"C:\\\\xampp\\\\htdocs\\\\Informes\\\\uvi-space\" && npx tsc --noEmit 2>&1 | head -80)",
       "Bash(cd \"C:\\\\xampp\\\\htdocs\\\\Informes\\\\uvi-space\" && npx tsc --noEmit 2>&1 | grep -v \"alistamiento\")",
-      "Bash(cd \"C:\\\\xampp\\\\htdocs\\\\Informes\\\\uvi-space\" && npx tsc --noEmit 2>&1)"
+      "Bash(cd \"C:\\\\xampp\\\\htdocs\\\\Informes\\\\uvi-space\" && npx tsc --noEmit 2>&1)",
+      "Bash(cd \"C:/xampp/htdocs/Informes/uvi-space\" && npx tsc --noEmit 2>&1 | head -60)",
+      "Bash(cd \"C:/xampp/htdocs/Informes/uvi-space\" && npx tsc --noEmit 2>&1 | grep -E \"\\(lib/moodle|app/api/moodle/revision-cursos/contenido|components/moodle\\)\")",
+      "Bash(cd \"C:/xampp/htdocs/Informes/uvi-space\" && npx tsc --noEmit 2>&1 | grep -v \"alistamiento\")",
+      "WebFetch(domain:aulasvirtuales.unicamacho.edu.co)",
+      "Bash(cd \"C:\\\\xampp\\\\htdocs\\\\Informes\\\\uvi-space\" && npx tsc --noEmit 2>&1 | grep -v \"alistamiento\" | head -50)",
+      "Bash(cd \"C:\\\\xampp\\\\htdocs\\\\Informes\\\\uvi-space\" && npx tsc --noEmit 2>&1 | grep -v \"alistamiento\" | head -40)",
+      "Bash(cd \"C:\\\\xampp\\\\htdocs\\\\Informes\\\\uvi-space\" && npx tsc --noEmit 2>&1 | grep -v \"alistamiento\" | head -20)"
     ]
   }
 }
