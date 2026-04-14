@@ -566,8 +566,19 @@ export async function validateCourseContent(
   // ── Section dates validation ───────────────────────────────────────────────
 
   const sectionDatesResult: CourseContentValidationResult["sectionDates"] = (() => {
-    // Only validate visible content sections (section > 0)
-    const contentSections = sections.filter((s) => s.section > 0 && s.visible === 1);
+    // For tab-based formats (e.g. tiles), sections 0 and 1 are navigation chrome,
+    // so content sections start at index 2. For all other formats, start at 1.
+    const firstContentSection = CONTENT_VALIDATION_CONSTANTS.TAB_BASED_FORMATS.includes(courseFormat) ? 2 : 1;
+
+    // Only validate visible content sections (section >= firstContentSection)
+    // Exclude sections named "Estudiante Unicamacho" or whose name contains "Tema"
+    const contentSections = sections.filter((s) => {
+      if (s.section < firstContentSection || s.visible !== 1) return false;
+      const name = (s.name ?? "").trim();
+      if (name === "Estudiante Unicamacho") return false;
+      if (/Tema/i.test(name)) return false;
+      return true;
+    });
 
     const sectionChecks: SectionDateCheck[] = contentSections.map((s) => {
       const text       = htmlToPlainText(s.summary ?? "");
