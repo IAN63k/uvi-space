@@ -73,6 +73,7 @@ type ColumnKey =
   | "documento"
   | "programa"
   | "semestre"
+  | "grupo"
   | "idCurso"
   | "curso"
   | "codigo"
@@ -104,6 +105,7 @@ const columnLabels: Record<ColumnKey, string> = {
   documento: "Documento",
   programa: "Programa",
   semestre: "Semestre",
+  grupo: "Grupo",
   idCurso: "ID Curso",
   curso: "Curso",
   codigo: "Código",
@@ -136,6 +138,7 @@ const allColumns: ColumnKey[] = [
   "documento",
   "programa",
   "semestre",
+  "grupo",
   "idCurso",
   "curso",
   "codigo",
@@ -183,6 +186,7 @@ export default function AlistamientoPage() {
     documento: false,
     programa: true,
     semestre: true,
+    grupo: true,
     idCurso: true,
     curso: true,
     codigo: true,
