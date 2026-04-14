@@ -22,10 +22,22 @@ import {
   MonitorPlay,
   GraduationCap,
   Sparkles,
+  SlidersHorizontal,
+  ClipboardCheck,
+  HelpCircle,
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import type { CourseContentValidationResult, ValidationCheck, SectionDateCheck, GradebookCategoryCheck, GradeCategoryItem } from "@/lib/moodle/types";
+import type {
+  CourseContentValidationResult,
+  ValidationCheck,
+  SectionDateCheck,
+  GradebookCategoryCheck,
+  GradeCategoryItem,
+  AssignActivityCheck,
+  QuizActivityCheck,
+  ForumActivityCheck,
+} from "@/lib/moodle/types";
 
 // ── Check Row ─────────────────────────────────────────────────────────────────
 
@@ -435,6 +447,82 @@ function GradebookBody({
   );
 }
 
+// ── Activity List Body ────────────────────────────────────────────────────────
+
+type AnyActivityCheck = AssignActivityCheck | QuizActivityCheck | ForumActivityCheck;
+
+function ActivityListBody({ activities }: { activities: AnyActivityCheck[] }) {
+  const [openItem, setOpenItem] = useState<number | null>(null);
+
+  if (activities.length === 0) {
+    return (
+      <div className="px-5 py-8 text-center text-sm text-muted-foreground">
+        No se encontraron actividades de este tipo en el curso.
+      </div>
+    );
+  }
+
+  return (
+    <div className="divide-y divide-border/60">
+      {activities.map((activity) => {
+        const checks = Object.values(activity.checks) as ValidationCheck[];
+        const failCount = checks.filter((c) => !c.passed).length;
+        const isOpen = openItem === activity.cmid;
+
+        return (
+          <div key={activity.cmid}>
+            <button
+              type="button"
+              onClick={() => setOpenItem(isOpen ? null : activity.cmid)}
+              className="flex w-full items-center gap-3 px-4 py-3 text-left transition-colors hover:bg-muted/20"
+              aria-expanded={isOpen}
+            >
+              <span className="shrink-0">
+                {activity.passed ? (
+                  <CheckCircle2 className="h-3.5 w-3.5 text-emerald-500 drop-shadow-[0_0_4px_rgb(16_185_129/0.4)]" />
+                ) : (
+                  <XCircle className="h-3.5 w-3.5 text-rose-500 drop-shadow-[0_0_4px_rgb(244_63_94/0.4)]" />
+                )}
+              </span>
+              <span className="flex-1 truncate text-sm font-medium leading-snug">{activity.name}</span>
+              <span className="flex shrink-0 items-center gap-2">
+                <code className="font-mono text-[10px] text-muted-foreground/50">
+                  <Hash className="inline h-2.5 w-2.5" />
+                  {activity.cmid}
+                </code>
+                {activity.passed ? (
+                  <span className="rounded-full bg-emerald-50 px-2 py-0.5 font-mono text-[10px] font-semibold text-emerald-600 dark:bg-emerald-950/30 dark:text-emerald-400">
+                    OK
+                  </span>
+                ) : (
+                  <span className="rounded-full bg-rose-50 px-2 py-0.5 font-mono text-[10px] font-semibold text-rose-600 dark:bg-rose-950/30 dark:text-rose-400">
+                    {failCount} falla{failCount !== 1 ? "s" : ""}
+                  </span>
+                )}
+                <ChevronDown
+                  className={`h-3.5 w-3.5 shrink-0 text-muted-foreground transition-transform duration-200 ${isOpen ? "rotate-180" : ""}`}
+                />
+              </span>
+            </button>
+            <div
+              className="grid transition-[grid-template-rows] duration-200 ease-in-out"
+              style={{ gridTemplateRows: isOpen ? "1fr" : "0fr" }}
+            >
+              <div className="overflow-hidden">
+                <div className="space-y-0.5 border-t border-border/40 bg-muted/5 px-2 py-2">
+                  {checks.map((check, idx) => (
+                    <CheckRow key={idx} check={check} index={idx} />
+                  ))}
+                </div>
+              </div>
+            </div>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
 // ── Category Section ──────────────────────────────────────────────────────────
 
 interface CategorySectionProps {
@@ -586,10 +674,10 @@ export interface CourseContentValidatorProps {
 
 export function CourseContentValidator({ result }: CourseContentValidatorProps) {
   const [previewOpen,   setPreviewOpen]   = useState(false);
-  const [openCategory,  setOpenCategory]  = useState<"presentacion" | "calificaciones" | null>("presentacion");
+  const [openCategory,  setOpenCategory]  = useState<"presentacion" | "calificaciones" | "ajustes" | null>("presentacion");
   const [openAccordion, setOpenAccordion] = useState<string | null>("page");
 
-  const { professorPage, consultationForum, meeting, attendance, microcurriculum, blocks, sectionDates, gradebook } = result;
+  const { professorPage, consultationForum, meeting, attendance, microcurriculum, blocks, sectionDates, gradebook, activitySettings } = result;
 
   // ── Derived check arrays ───────────────────────────────────────────────────
   const pageChecks            = Object.values(professorPage.checks) as ValidationCheck[];
@@ -612,8 +700,17 @@ export function CourseContentValidator({ result }: CourseContentValidatorProps) 
   ];
   const presentacionPassed = presentacionItems.filter(Boolean).length;
 
+  // ── Activity settings totals ───────────────────────────────────────────────
+  const allActivities = [
+    ...activitySettings.assignments,
+    ...activitySettings.quizzes,
+    ...activitySettings.forums,
+  ];
+  const actividadesPassed = allActivities.filter((a) => a.passed).length;
+  const actividadesTotal  = allActivities.length;
+
   // ── Toggle helpers ─────────────────────────────────────────────────────────
-  const toggleCategory  = (key: "presentacion" | "calificaciones") =>
+  const toggleCategory  = (key: "presentacion" | "calificaciones" | "ajustes") =>
     setOpenCategory((prev) => (prev === key ? null : key));
   const toggleAccordion = (key: string) =>
     setOpenAccordion((prev) => (prev === key ? null : key));
@@ -813,6 +910,73 @@ export function CourseContentValidator({ result }: CourseContentValidatorProps) 
               efcChecks={gradebook.efcChecks}
               error={gradebook.error}
             />
+          </AccordionItem>
+        </CategorySection>
+
+        {/* ══════════════════════════════════════ CATEGORÍA: Ajustes de actividades */}
+        <CategorySection
+          icon={SlidersHorizontal}
+          title="Ajustes de actividades"
+          subtitle="Tareas, cuestionarios y foros · puntuación, fechas, retroalimentación y finalización"
+          passed={activitySettings.passed}
+          passedCount={actividadesPassed}
+          totalCount={actividadesTotal}
+          isOpen={openCategory === "ajustes"}
+          onToggle={() => toggleCategory("ajustes")}
+          emptyLabel={actividadesTotal === 0 ? "No se encontraron actividades en el curso" : undefined}
+        >
+          {/* ── Tareas ── */}
+          <AccordionItem
+            id="assigns"
+            icon={ClipboardCheck}
+            title="Tareas"
+            idnumber={`${activitySettings.assignments.length} actividad${activitySettings.assignments.length !== 1 ? "es" : ""}`}
+            found={activitySettings.assignments.length > 0}
+            passed={activitySettings.assignments.length === 0 || activitySettings.assignments.every((a) => a.passed)}
+            passedCount={activitySettings.assignments.filter((a) => a.passed).length}
+            totalCount={activitySettings.assignments.length}
+            cmid={null}
+            isOpen={openAccordion === "assigns"}
+            onToggle={() => toggleAccordion("assigns")}
+            notFoundLabel="No hay tareas (mod_assign) en este curso"
+          >
+            <ActivityListBody activities={activitySettings.assignments} />
+          </AccordionItem>
+
+          {/* ── Cuestionarios ── */}
+          <AccordionItem
+            id="quizzes"
+            icon={HelpCircle}
+            title="Cuestionarios"
+            idnumber={`${activitySettings.quizzes.length} actividad${activitySettings.quizzes.length !== 1 ? "es" : ""}`}
+            found={activitySettings.quizzes.length > 0}
+            passed={activitySettings.quizzes.length === 0 || activitySettings.quizzes.every((q) => q.passed)}
+            passedCount={activitySettings.quizzes.filter((q) => q.passed).length}
+            totalCount={activitySettings.quizzes.length}
+            cmid={null}
+            isOpen={openAccordion === "quizzes"}
+            onToggle={() => toggleAccordion("quizzes")}
+            notFoundLabel="No hay cuestionarios (mod_quiz) en este curso"
+          >
+            <ActivityListBody activities={activitySettings.quizzes} />
+          </AccordionItem>
+
+          {/* ── Foros ── */}
+          <AccordionItem
+            id="act-forums"
+            icon={MessageSquare}
+            title="Foros"
+            idnumber={`${activitySettings.forums.length} actividad${activitySettings.forums.length !== 1 ? "es" : ""}`}
+            found={activitySettings.forums.length > 0}
+            passed={activitySettings.forums.length === 0 || activitySettings.forums.every((f) => f.passed)}
+            passedCount={activitySettings.forums.filter((f) => f.passed).length}
+            totalCount={activitySettings.forums.length}
+            cmid={null}
+            isOpen={openAccordion === "act-forums"}
+            onToggle={() => toggleAccordion("act-forums")}
+            notFoundLabel="No hay foros (mod_forum) en este curso"
+          >
+            <ActivityListBody activities={activitySettings.forums} />
           </AccordionItem>
         </CategorySection>
 
