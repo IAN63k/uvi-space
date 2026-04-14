@@ -1,6 +1,6 @@
 import https from "node:https";
 import axios from "axios";
-import type { MoodleCategory, MoodleCourse, ValidationRules, CourseError, CourseValidationResult, CategoryNode, CourseSummary, CourseSection, CourseModuleDetail, MoodlePage, MoodleForum, MoodleBlock, GradeTreeNode, GradeItem } from "./types";
+import type { MoodleCategory, MoodleCourse, ValidationRules, CourseError, CourseValidationResult, CategoryNode, CourseSummary, CourseSection, CourseModuleDetail, MoodlePage, MoodleForum, MoodleBlock, GradeTreeNode, GradeItem, MoodleAssignment, MoodleQuiz } from "./types";
 
 // Axios instance with a custom HTTPS agent that:
 // - Disables strict SSL verification (handles self-signed / intermediate certs common in .edu environments)
@@ -496,4 +496,37 @@ export async function getForumsByCourse(
     extraParams: { "courseids[0]": courseId },
   });
   return Array.isArray(data) ? data : [];
+}
+
+/** Fetches all assignment instances for a course in a single call.
+ *  includenotenrolledcourses=1 is required so that admin/manager tokens that
+ *  are not enrolled in the course still receive the assignments list. */
+export async function getAssignmentsByCourse(
+  moodleUrl: string,
+  token: string,
+  courseId: number,
+): Promise<MoodleAssignment[]> {
+  const data = await apiCall<{ courses?: Array<{ id: number; assignments: MoodleAssignment[] }> }>({
+    moodleUrl,
+    token,
+    wsfunction: "mod_assign_get_assignments",
+    extraParams: { "courseids[0]": courseId, includenotenrolledcourses: 1 },
+  });
+  return data.courses?.[0]?.assignments ?? [];
+}
+
+/** Fetches all quiz instances for a course in a single call.
+ *  includenotenrolledcourses=1 ensures non-enrolled admin tokens receive data. */
+export async function getQuizzesByCourse(
+  moodleUrl: string,
+  token: string,
+  courseId: number,
+): Promise<MoodleQuiz[]> {
+  const data = await apiCall<{ quizzes?: MoodleQuiz[] }>({
+    moodleUrl,
+    token,
+    wsfunction: "mod_quiz_get_quizzes_by_courses",
+    extraParams: { "courseids[0]": courseId, includenotenrolledcourses: 1 },
+  });
+  return data.quizzes ?? [];
 }
