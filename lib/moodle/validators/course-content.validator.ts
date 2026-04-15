@@ -239,13 +239,13 @@ export async function validateCourseContent(
 
   await Promise.all([
     getAssignmentsByCourse(moodleUrl, token, courseId)
-      .then((a) => { assigns = a; })
+      .then((a) => { assigns = a; console.log("[mod_assign_get_assignments]", JSON.stringify(a, null, 2)); })
       .catch((err) => { assignsError = err instanceof Error ? err.message : "Error desconocido"; }),
     getQuizzesByCourse(moodleUrl, token, courseId)
-      .then((q) => { quizzes = q; })
+      .then((q) => { quizzes = q; console.log("[mod_quiz_get_quizzes_by_courses]", JSON.stringify(q, null, 2)); })
       .catch((err) => { quizzesError = err instanceof Error ? err.message : "Error desconocido"; }),
     getGradeTree(moodleUrl, token, courseId)
-      .then((t) => { gradeTree = t; console.log("[core_grades_get_grade_tree]", JSON.stringify(t, null, 2)); })
+      .then((t) => { gradeTree = t; })
       .catch((err) => { gradeTreeError = err instanceof Error ? err.message : "Error desconocido"; }),
     getGradeItems(moodleUrl, token, courseId, GRADEBOOK_SAMPLE_USERID)
       .then((items) => { allGradeItems = items; })
