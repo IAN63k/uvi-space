@@ -65,11 +65,7 @@ export const CONTENT_VALIDATION_CONSTANTS = {
   EXPECTED_FORUM_TYPE: "general",
   /** Expected modplural for the MS Teams meeting module */
   EXPECTED_MEETING_MODPLURAL: "MS Meetings",
-  /**
-   * Formats where section 0 is navigation chrome — the professor presentation
-   * module lives at section 1. All other formats use section 0.
-   * Currently only "onetopic" (tiles layout) applies.
-   */
+  /** Kept for reference — all known formats use section 0 as the presentation section. */
   TAB_BASED_FORMATS: ["onetopic", "tiles"] as readonly string[],
   // ── Activity settings expected values ────────────────────────────────────────
   /** Maximum grade expected on every graded activity */
@@ -84,10 +80,10 @@ export const CONTENT_VALIDATION_CONSTANTS = {
 
 /**
  * Returns the section index that should contain the professor presentation
- * module, based on the course format.
+ * module. All course formats (including onetopic/tiles) use section 0.
  */
-export function getPresentationSectionNumber(format: string): number {
-  return CONTENT_VALIDATION_CONSTANTS.TAB_BASED_FORMATS.includes(format) ? 1 : 0;
+export function getPresentationSectionNumber(_format: string): number {
+  return 0;
 }
 
 function makeCheck(
@@ -594,9 +590,8 @@ export async function validateCourseContent(
   // ── Section dates validation ───────────────────────────────────────────────
 
   const sectionDatesResult: CourseContentValidationResult["sectionDates"] = (() => {
-    // For tab-based formats (e.g. tiles), sections 0 and 1 are navigation chrome,
-    // so content sections start at index 2. For all other formats, start at 1.
-    const firstContentSection = CONTENT_VALIDATION_CONSTANTS.TAB_BASED_FORMATS.includes(courseFormat) ? 2 : 1;
+    // Presentation is always section 0; content sections start at 1.
+    const firstContentSection = 1;
 
     // Only validate visible content sections (section >= firstContentSection)
     // Exclude sections named "Estudiante Unicamacho" or whose name contains "Tema"
