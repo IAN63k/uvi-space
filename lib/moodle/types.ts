@@ -407,6 +407,8 @@ export interface AssignActivityChecks {
   completionSubmit: ValidationCheck;     // Finalización: debe entregar
   completionView: ValidationCheck;       // Finalización automática activada
   maxFiles: ValidationCheck;             // Máx. archivos = 3
+  maxFileSize: ValidationCheck;          // Tamaño máximo de archivo = 5 MB
+  fileTypesList: ValidationCheck;        // Tipos de archivo = *
   feedbackComments: ValidationCheck;     // Retroalimentación: Comentarios
   feedbackPdf: ValidationCheck;          // Retroalimentación: Anotaciones PDF
   feedbackFile: ValidationCheck;         // Retroalimentación: Archivos
