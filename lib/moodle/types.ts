@@ -517,6 +517,8 @@ export interface CourseContentValidationResult {
     passed: boolean;
   };
   activitySettings: ActivitySettingsResult;
+  /** Direct URL to the course in Moodle: {moodleUrl}/course/view.php?id={courseId} */
+  courseUrl: string;
   passed: boolean;
 }
 

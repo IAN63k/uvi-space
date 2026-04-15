@@ -719,7 +719,7 @@ export function CourseContentValidator({ result }: CourseContentValidatorProps) 
     <>
       <div className="space-y-4">
 
-        {/* ── Course name + format badge ── */}
+        {/* ── Course name + format badge + Moodle link ── */}
         {result.courseName && (
           <div className="flex flex-wrap items-center gap-2">
             <h3 className="text-base font-semibold leading-tight">{result.courseName}</h3>
@@ -727,6 +727,17 @@ export function CourseContentValidator({ result }: CourseContentValidatorProps) 
               <LayoutTemplate className="h-2.5 w-2.5" />
               {result.courseFormat}
             </span>
+            {result.courseUrl && (
+              <a
+                href={result.courseUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="flex items-center gap-1 rounded-full border border-blue-200 bg-blue-50 px-2.5 py-0.5 text-[10px] font-medium text-blue-600 transition-colors hover:border-blue-300 hover:bg-blue-100 dark:border-blue-800/60 dark:bg-blue-950/30 dark:text-blue-400 dark:hover:border-blue-700 dark:hover:bg-blue-900/40"
+              >
+                <ExternalLink className="h-2.5 w-2.5" />
+                Abrir en Moodle
+              </a>
+            )}
           </div>
         )}
 

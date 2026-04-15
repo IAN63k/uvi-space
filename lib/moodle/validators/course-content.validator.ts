@@ -982,6 +982,7 @@ export async function validateCourseContent(
     sectionDates: sectionDatesResult,
     gradebook: gradebookResult,
     activitySettings: activitySettingsResult,
+    courseUrl: `${moodleUrl.replace(/\/$/, "")}/course/view.php?id=${courseId}`,
     passed,
   };
 }
