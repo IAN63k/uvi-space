@@ -72,6 +72,10 @@ export const CONTENT_VALIDATION_CONSTANTS = {
   EXPECTED_GRADE_MAX: 5,
   /** Maximum number of uploaded files for assignments */
   EXPECTED_MAX_FILES: 3,
+  /** Maximum file upload size for assignments in bytes (5 MB) */
+  EXPECTED_MAX_FILE_SIZE_BYTES: 5 * 1024 * 1024,
+  /** Accepted file types for assignments */
+  EXPECTED_FILE_TYPES: "*",
   /** Pass grade expected on every graded activity */
   EXPECTED_GRADE_PASS: 3,
 } as const;
@@ -737,7 +741,7 @@ export async function validateCourseContent(
   // ── Activity settings validation ───────────────────────────────────────────
 
   const activitySettingsResult: ActivitySettingsResult = (() => {
-    const { EXPECTED_GRADE_MAX, EXPECTED_GRADE_PASS, EXPECTED_MAX_FILES } = CONTENT_VALIDATION_CONSTANTS;
+    const { EXPECTED_GRADE_MAX, EXPECTED_GRADE_PASS } = CONTENT_VALIDATION_CONSTANTS;
 
     // Map cmid → completion mode (from sections data, avoids extra API calls)
     const completionByCmid = new Map<number, number>();
@@ -748,15 +752,22 @@ export async function validateCourseContent(
     }
 
     // Map "modname:instanceId" → gradepass (from already-fetched grade items)
-    const gradePassMap = new Map<string, number>();
+    const gradePassMap    = new Map<string, number>();
+    // Fallback map by cmid in case iteminstance lookup fails
+    const gradePassByCmid = new Map<number, number>();
     for (const item of allGradeItems) {
       if (
         item.itemtype === "mod" &&
         item.itemmodule &&
-        item.iteminstance !== undefined &&
-        item.gradepass !== undefined
+        item.gradepass !== undefined &&
+        item.gradepass > 0
       ) {
-        gradePassMap.set(`${item.itemmodule}:${item.iteminstance}`, item.gradepass);
+        if (item.iteminstance !== undefined) {
+          gradePassMap.set(`${item.itemmodule}:${item.iteminstance}`, item.gradepass);
+        }
+        if (item.cmid !== undefined) {
+          gradePassByCmid.set(item.cmid, item.gradepass);
+        }
       }
     }
 
@@ -771,12 +782,18 @@ export async function validateCourseContent(
 
     // ── Assignments ────────────────────────────────────────────────────────────
     const assignmentChecks: AssignActivityCheck[] = assigns.map((a) => {
+      const { EXPECTED_GRADE_MAX, EXPECTED_GRADE_PASS, EXPECTED_MAX_FILES, EXPECTED_MAX_FILE_SIZE_BYTES, EXPECTED_FILE_TYPES } = CONTENT_VALIDATION_CONSTANTS;
       const completionMode = completionByCmid.get(a.cmid) ?? 0;
-      const gradePassVal   = gradePassMap.get(`assign:${a.id}`);
+      const gradePassVal   = gradePassMap.get(`assign:${a.id}`) ?? gradePassByCmid.get(a.cmid);
 
-      const maxFilesRaw = getAssignConfig(a.configs, "file", "assignsubmission", "maxfiles");
-      const maxFilesNum = maxFilesRaw !== null ? parseInt(maxFilesRaw, 10) : null;
+      // assignsubmission_file plugin configs
+      const maxFilesRaw    = getAssignConfig(a.configs, "file", "assignsubmission", "maxfilesubmissions");
+      const maxFilesNum    = maxFilesRaw !== null ? parseInt(maxFilesRaw, 10) : null;
+      const maxFileSizeRaw = getAssignConfig(a.configs, "file", "assignsubmission", "maxsubmissionsizebytes");
+      const maxFileSizeNum = maxFileSizeRaw !== null ? parseInt(maxFileSizeRaw, 10) : null;
+      const fileTypesRaw   = getAssignConfig(a.configs, "file", "assignsubmission", "filetypeslist");
 
+      // assignfeedback plugin configs
       const fbComments = getAssignConfig(a.configs, "comments", "assignfeedback", "enabled");
       const fbPdf      = getAssignConfig(a.configs, "editpdf",  "assignfeedback", "enabled");
       const fbFile     = getAssignConfig(a.configs, "file",     "assignfeedback", "enabled");
@@ -825,6 +842,18 @@ export async function validateCourseContent(
           maxFilesNum ?? "(no encontrado)",
           `Máx. archivos = ${EXPECTED_MAX_FILES}`,
         ),
+        maxFileSize: makeCheck(
+          maxFileSizeNum === EXPECTED_MAX_FILE_SIZE_BYTES,
+          `${EXPECTED_MAX_FILE_SIZE_BYTES} (5 MB)`,
+          maxFileSizeNum ?? "(no encontrado)",
+          "Tamaño máximo de archivo = 5 MB",
+        ),
+        fileTypesList: makeCheck(
+          fileTypesRaw === EXPECTED_FILE_TYPES,
+          EXPECTED_FILE_TYPES,
+          fileTypesRaw ?? "(no encontrado)",
+          `Tipos de archivo = ${EXPECTED_FILE_TYPES}`,
+        ),
         feedbackComments: makeCheck(
           fbComments === "1",
           "1",
@@ -850,7 +879,7 @@ export async function validateCourseContent(
           "Retroalimentación: Hoja de calificación offline",
         ),
         gradePass: makeCheck(
-          gradePassVal === EXPECTED_GRADE_PASS,
+          gradePassVal !== undefined && gradePassVal === EXPECTED_GRADE_PASS,
           EXPECTED_GRADE_PASS,
           gradePassVal ?? "(no encontrada)",
           `Calificación para aprobar: ${EXPECTED_GRADE_PASS},0`,
@@ -863,7 +892,7 @@ export async function validateCourseContent(
     // ── Quizzes ────────────────────────────────────────────────────────────────
     const quizChecks: QuizActivityCheck[] = quizzes.map((q) => {
       const completionMode = completionByCmid.get(q.coursemodule) ?? 0;
-      const gradePassVal   = gradePassMap.get(`quiz:${q.id}`);
+      const gradePassVal   = gradePassMap.get(`quiz:${q.id}`) ?? gradePassByCmid.get(q.coursemodule);
 
       const checks: QuizActivityChecks = {
         grade: makeCheck(
@@ -897,7 +926,7 @@ export async function validateCourseContent(
           "Finalización automática activada",
         ),
         gradePass: makeCheck(
-          gradePassVal === EXPECTED_GRADE_PASS,
+          gradePassVal !== undefined && gradePassVal === EXPECTED_GRADE_PASS,
           EXPECTED_GRADE_PASS,
           gradePassVal ?? "(no encontrada)",
           `Calificación para aprobar: ${EXPECTED_GRADE_PASS},0`,
