@@ -341,6 +341,26 @@ export interface GradebookCategoryCheck {
   passed: boolean;
 }
 
+export interface MoodleEnrolledUser {
+  id: number;
+  username: string;
+  firstname: string;
+  lastname: string;
+  fullname: string;
+  email: string;
+  idnumber?: string;
+}
+
+export interface GradeItemGrade {
+  userid: number;
+  /** Grade value as a string (e.g. "4.50000") or null/"-" when ungraded */
+  grade: string | null;
+  locked: boolean;
+  hidden: boolean;
+  feedback?: string | null;
+  feedbackformat?: number;
+}
+
 export interface GradeItem {
   id: number;
   itemname: string | null;
@@ -354,6 +374,9 @@ export interface GradeItem {
   grademax?: number;
   /** Pass grade (e.g. 3.0) */
   gradepass?: number;
+  cmid?: number;
+  /** Grade values for the requested user(s) */
+  grades?: GradeItemGrade[];
 }
 
 export interface GradeCategoryItem {
