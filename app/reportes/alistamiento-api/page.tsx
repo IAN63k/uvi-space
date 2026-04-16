@@ -505,8 +505,8 @@ export default function AlistamientoApiPage() {
             onClick={() => handleModeChange(key)}
             className={`flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-medium transition-all ${
               mode === key
-                ? "bg-background text-foreground shadow-sm"
-                : "text-muted-foreground hover:text-foreground"
+          ? "bg-white text-foreground shadow-sm dark:bg-emerald-600"
+          : "text-muted-foreground hover:text-foreground"
             }`}
           >
             <Icon className="h-3.5 w-3.5" />
