@@ -349,6 +349,13 @@ export interface MoodleEnrolledUser {
   fullname: string;
   email: string;
   idnumber?: string;
+  roles?: Array<{ roleid: number; name: string; shortname: string }>;
+}
+
+export interface MoodleForumDiscussion {
+  id: number;
+  name: string;
+  userid: number;
 }
 
 export interface GradeItemGrade {
@@ -377,6 +384,10 @@ export interface GradeItem {
   cmid?: number;
   /** Grade values for the requested user(s) */
   grades?: GradeItemGrade[];
+  /** Normalized weight of this item in its parent category (0–1). May be null if not applicable. */
+  weightraw?: number | null;
+  /** Percentage contribution to the course grade. May be null. */
+  percentageraw?: number | null;
 }
 
 export interface GradeCategoryItem {

@@ -28,6 +28,7 @@ function getCompactLabel(label: string) {
 
 const reportNavItems: NavItem[] = [
   { label: "Alistamiento", href: "/reportes/alistamiento", shortLabel: "AL" },
+  { label: "Alistamiento API", href: "/reportes/alistamiento-api", shortLabel: "AA" },
   { label: "EFC 01", href: "/reportes/efc/1", badge: "EFC01", shortLabel: "E1" },
   { label: "EFC 02", href: "/reportes/efc/2", badge: "EFC02", shortLabel: "E2" },
   { label: "EFC 03", href: "/reportes/efc/3", badge: "EFC03", shortLabel: "E3" },

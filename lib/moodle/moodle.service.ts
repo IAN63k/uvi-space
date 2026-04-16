@@ -1,6 +1,6 @@
 import https from "node:https";
 import axios from "axios";
-import type { MoodleCategory, MoodleCourse, MoodleEnrolledUser, ValidationRules, CourseError, CourseValidationResult, CategoryNode, CourseSummary, CourseSection, CourseModuleDetail, MoodlePage, MoodleForum, MoodleBlock, GradeTreeNode, GradeItem, MoodleAssignment, MoodleQuiz } from "./types";
+import type { MoodleCategory, MoodleCourse, MoodleEnrolledUser, MoodleForumDiscussion, ValidationRules, CourseError, CourseValidationResult, CategoryNode, CourseSummary, CourseSection, CourseModuleDetail, MoodlePage, MoodleForum, MoodleBlock, GradeTreeNode, GradeItem, MoodleAssignment, MoodleQuiz } from "./types";
 
 // Axios instance with a custom HTTPS agent that:
 // - Disables strict SSL verification (handles self-signed / intermediate certs common in .edu environments)
@@ -537,6 +537,74 @@ export async function getEnrolledUsersByRole(
   });
 
   return Array.isArray(data) ? data : [];
+}
+
+/** Teacher role shortnames recognised across Moodle installations. */
+const TEACHER_ROLE_SHORTNAMES = new Set([
+  "editingteacher",
+  "teacher",
+  "manager",
+  "coursecreator",
+]);
+
+/** Fetches only teacher-role users for a course.
+ *  Fetches all active enrolled users (up to `fetchLimit`) and filters
+ *  client-side by role shortname, because the server-side `roleid` option
+ *  is not reliably honoured by all Moodle installations. */
+export async function getEnrolledUsers(
+  moodleUrl: string,
+  token: string,
+  courseId: number,
+  options: { roleId?: number; limit?: number } = {},
+): Promise<MoodleEnrolledUser[]> {
+  const fetchLimit = 200;
+
+  const extraParams: Record<string, string | number> = {
+    courseid: courseId,
+    "options[0][name]": "onlyactive",
+    "options[0][value]": "1",
+    "options[1][name]": "limitnumber",
+    "options[1][value]": fetchLimit,
+    "options[2][name]": "userfields",
+    "options[2][value]": "id,fullname,email,idnumber,roles",
+  };
+
+  const data = await apiCall<MoodleEnrolledUser[]>({
+    moodleUrl,
+    token,
+    wsfunction: "core_enrol_get_enrolled_users",
+    extraParams,
+  });
+
+  const all = Array.isArray(data) ? data : [];
+
+  if (options.roleId === undefined) return all;
+
+  const teachers = all.filter(
+    (u) =>
+      Array.isArray(u.roles) &&
+      u.roles.some((r) => TEACHER_ROLE_SHORTNAMES.has(r.shortname)),
+  );
+
+  const limit = options.limit;
+  return limit !== undefined ? teachers.slice(0, limit) : teachers;
+}
+
+/** Fetches discussions for a specific forum.
+ *  Returns only the first page (up to perpage items) to check existence. */
+export async function getForumDiscussions(
+  moodleUrl: string,
+  token: string,
+  forumId: number,
+  perpage = 1,
+): Promise<MoodleForumDiscussion[]> {
+  const data = await apiCall<{ discussions?: MoodleForumDiscussion[] }>({
+    moodleUrl,
+    token,
+    wsfunction: "mod_forum_get_forum_discussions",
+    extraParams: { forumid: forumId, page: 0, perpage },
+  });
+  return data.discussions ?? [];
 }
 
 /** Fetches all quiz instances for a course in a single call. */
