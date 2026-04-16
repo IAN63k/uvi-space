@@ -13,7 +13,7 @@ import {
   getEnrolledUsers,
   getForumDiscussions,
 } from "@/lib/moodle/moodle.service";
-import { CONTENT_VALIDATION_CONSTANTS, getPresentationSectionNumber } from "@/lib/moodle/validators/course-content.validator";
+import { getPresentationSectionNumber } from "@/lib/moodle/validators/course-content.validator";
 import type { CourseSection } from "@/lib/moodle/types";
 
 // ── Types ──────────────────────────────────────────────────────────────────────
@@ -153,28 +153,55 @@ const validateFotografia = (state: CounterState, content: string, blocked: strin
   return mark(state, !blocked.some((b) => lower.includes(b)));
 };
 
-const validateDateUnit = (state: CounterState, summary: string): Status =>
-  // CUMPLE if the placeholder is NOT present (dates have been filled in)
-  mark(state, !stripHtml(summary).includes("DD/MM/AAAA"));
+/** Matches a real date like 24/02/2026 or 2/3/2026 */
+const REAL_DATE_RE = /\b\d{1,2}\/\d{1,2}\/\d{4}\b/;
+
+const validateDateUnit = (state: CounterState, summary: string): Status => {
+  const text = stripHtml(summary);
+  // FAIL if the placeholder is still present
+  if (text.includes("DD/MM/AAAA")) return mark(state, false);
+  // CUMPLE only if at least one real date exists (e.g. 24/02/2026)
+  return mark(state, REAL_DATE_RE.test(text));
+};
 
 // ── Sections date validation (from course contents) ────────────────────────────
+
+/** Normalise a section name for exclusion checks (strip accents, lowercase). */
+const normalizeSectionName = (name: string) =>
+  name.toLowerCase().normalize("NFD").replace(/\p{Diacritic}/gu, "");
 
 function validateSectionDates(
   state: CounterState,
   sections: CourseSection[],
-  courseFormat: string,
+  /** Section number (0-based) of the presentation/bienvenida section.
+   *  Content units start at presentationSectionNumber + 1. */
+  presentationSectionNumber: number,
 ): Status[] {
-  // First content section index depends on format
-  const firstContentSection =
-    CONTENT_VALIDATION_CONSTANTS.TAB_BASED_FORMATS.includes(courseFormat) ? 2 : 1;
+  const firstContentSection = presentationSectionNumber + 1;
 
-  const contentSections = sections
-    .filter((s) => s.section >= firstContentSection && s.visible === 1)
+  const candidateSections = sections
+    .filter((s) => {
+      // Only content sections (skip general + teacher presentation)
+      if (s.section < firstContentSection) return false;
+      // Must be reachable by the token (teacher view)
+      if (!s.uservisible) return false;
+      // Ignore sections beyond the course's configured numsections
+      if (s.hiddenbynumsections !== 0) return false;
+      const name = normalizeSectionName(s.name ?? "");
+      // Skip the "Presentación" structural section — it never carries dates
+      if (name.includes("presentaci")) return false;
+      // Skip sections addressed to students from another institution
+      if (name.includes("unicamacho")) return false;
+      return true;
+    })
     .sort((a, b) => a.section - b.section);
 
-  const statuses: Status[] = contentSections.map((s) =>
-    validateDateUnit(state, s.summary ?? ""),
-  );
+  const statuses: Status[] = candidateSections.map((s) => {
+    // Sections hidden from students: validation does not apply
+    if (s.visible !== 1) return STATUS.notApply;
+    // Visible sections: validate that dates have been filled in
+    return validateDateUnit(state, s.summary ?? "");
+  });
 
   // Pad / trim to 8 slots
   while (statuses.length < 8) statuses.push(STATUS.notApply);
@@ -333,16 +360,20 @@ async function processCourse(
     ...allForumModules.filter((m) => !forumModules.find((fm) => fm.id === m.id)),
   ];
 
+  // Fetch all forum module details in parallel, then find FC01
+  const forumDetails = await Promise.all(
+    candidateForumModules.map((fm) =>
+      getCourseModule(moodleUrl, token, fm.id)
+        .then((d) => ({ fm, detail: d }))
+        .catch(() => ({ fm, detail: null })),
+    ),
+  );
+
   let fc01ForumInstance: number | null = null;
-  for (const fm of candidateForumModules) {
-    const detail = await getCourseModule(moodleUrl, token, fm.id).catch(() => null);
+  for (const { fm, detail } of forumDetails) {
     if (detail?.idnumber === FORUM_ID && detail.visible === 1 && detail.visibleoncoursepage === 1) {
-      // Match with forum data to get Moodle forum ID (for discussions call)
       const forumData = forums.find((f) => f.cmid === fm.id);
-      if (forumData) {
-        fc01ForumInstance = forumData.id;
-        break;
-      }
+      if (forumData) { fc01ForumInstance = forumData.id; break; }
     }
   }
 
@@ -354,7 +385,13 @@ async function processCourse(
   }
 
   // ── Section dates ───────────────────────────────────────────────────────────
-  const unidades = validateSectionDates(state, sections, courseFormat);
+  // Use the actual section where DP01 was found as the presentation boundary.
+  // Falling back to the format-based preferred section if DP01 was not found.
+  const dp01Section = dp01Entry
+    ? sections.find((s) => s.modules.some((m) => m.id === dp01Entry.mod.id))
+    : undefined;
+  const presentationSectionActual = dp01Section?.section ?? preferredSection;
+  const unidades = validateSectionDates(state, sections, presentationSectionActual);
 
   // ── EFC categories ──────────────────────────────────────────────────────────
   // If no grade items were loaded, mark everything as NO EXISTE
@@ -477,7 +514,31 @@ async function handleIndividualCourse(
   });
 }
 
+// ── Batch helpers ──────────────────────────────────────────────────────────────
+
+/** Number of courses processed concurrently. Each course fires ~5 parallel Moodle
+ *  WS calls, so BATCH_SIZE=4 means ~20 concurrent requests max — safe for most
+ *  Moodle instances without triggering rate limits. */
+const BATCH_SIZE = 4;
+
+/** Process `items` in sequential batches of `size`, each batch running in parallel. */
+async function batchProcess<T, R>(
+  items: T[],
+  fn: (item: T) => Promise<R>,
+  size: number,
+): Promise<R[]> {
+  const results: R[] = [];
+  for (let i = 0; i < items.length; i += size) {
+    const batch = items.slice(i, i + size);
+    results.push(...await Promise.all(batch.map(fn)));
+  }
+  return results;
+}
+
 // ── Route handler ──────────────────────────────────────────────────────────────
+
+/** Extend serverless function timeout (Vercel / similar platforms). */
+export const maxDuration = 300;
 
 export const POST = async (request: NextRequest) => {
   try {
@@ -536,29 +597,40 @@ export const POST = async (request: NextRequest) => {
 
     const programNameById = new Map(programCategories.map((p) => [p.id, p.name]));
 
-    // ── Process courses ───────────────────────────────────────────────────────
-    const results: CourseResult[] = [];
+    // ── Collect all courses across all semesters in parallel ──────────────────
+    type CourseTask = {
+      courseId: number; courseName: string; courseCode: string;
+      courseFormat: string; programName: string; semesterName: string;
+    };
 
-    for (const semester of semesterCategories) {
-      const courses = await getCoursesByCategory(moodleUrl, token, semester.id);
-      const programName = programNameById.get(semester.parent) ?? "";
+    const allCourseTasks: CourseTask[] = (
+      await Promise.all(
+        semesterCategories.map(async (semester) => {
+          const courses = await getCoursesByCategory(moodleUrl, token, semester.id).catch(() => []);
+          const programName = programNameById.get(semester.parent) ?? "";
+          return courses.map((course) => ({
+            courseId:     course.id,
+            courseName:   course.fullname,
+            courseCode:   course.shortname,
+            courseFormat: course.format ?? "topics",
+            programName,
+            semesterName: semester.name,
+          }));
+        }),
+      )
+    ).flat();
 
-      for (const course of courses) {
-        const result = await processCourse(
-          moodleUrl,
-          token,
-          course.id,
-          course.fullname,
-          course.shortname,
-          course.format ?? "topics",
-          programName,
-          semester.name,
-          currentDate,
-          photoValidationTexts,
-        );
-        results.push(result);
-      }
-    }
+    // ── Process courses in parallel batches ───────────────────────────────────
+    const results = await batchProcess(
+      allCourseTasks,
+      (task) => processCourse(
+        moodleUrl, token,
+        task.courseId, task.courseName, task.courseCode, task.courseFormat,
+        task.programName, task.semesterName,
+        currentDate, photoValidationTexts,
+      ),
+      BATCH_SIZE,
+    );
 
     // ── Summary ───────────────────────────────────────────────────────────────
     const uniqueIds       = new Set(results.map((r) => r.courseId));
