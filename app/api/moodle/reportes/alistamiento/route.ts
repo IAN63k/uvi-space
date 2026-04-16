@@ -278,38 +278,39 @@ async function processCourse(
   ];
 
   // ── DP01 professor presentation page ────────────────────────────────────────
+  // Collect ALL page modules across all sections (presentation section first).
+  // There may be multiple page modules per section; we must check each one's
+  // idnumber via getCourseModule to find the one marked DP01.
   let nombreProfesor: Status;
   let correoProfesor: Status;
   let horarioAtencion: Status;
   let fotografia: Status;
 
-  let pageModule: (typeof sections)[0]["modules"][0] | undefined;
-  for (const section of orderedSections) {
-    const mod = section.modules.find((m) => m.modname === "page");
-    if (mod) { pageModule = mod; break; }
-  }
+  type CourseModule = (typeof sections)[0]["modules"][0];
+  const allPageModules: CourseModule[] = orderedSections.flatMap((s) =>
+    s.modules.filter((m) => m.modname === "page"),
+  );
 
-  if (pageModule) {
-    // Verify idnumber = DP01 via getCourseModule
-    const detail = await getCourseModule(moodleUrl, token, pageModule.id).catch(() => null);
-    if (detail?.idnumber === PAGE_ID) {
-      const pageContent = pages.find((p) => p.id === pageModule!.instance);
-      const content     = pageContent?.content ?? "";
-      const pageName    = pageModule.name ?? "";
+  // Fetch all module details in parallel, then find the DP01 entry
+  const pageDetails = await Promise.all(
+    allPageModules.map((m) =>
+      getCourseModule(moodleUrl, token, m.id)
+        .then((d) => ({ mod: m, detail: d }))
+        .catch(() => ({ mod: m, detail: null })),
+    ),
+  );
 
-      nombreProfesor  = nameValidate(state, pageName, teacherNames || "—");
-      correoProfesor  = emailValidate(state, content, teacherEmails || "—");
-      horarioAtencion = validateOpeningHours(state, content);
-      fotografia      = validateFotografia(state, content, photoValidationTexts);
-    } else {
-      // Page found but not DP01 — try searching all pages by instance and re-checking
-      // Fall back to not-exist for all four items
-      nombreProfesor  = STATUS.notExist;
-      correoProfesor  = STATUS.notExist;
-      horarioAtencion = STATUS.notExist;
-      fotografia      = STATUS.notExist;
-      state.fails += 4;
-    }
+  const dp01Entry = pageDetails.find((e) => e.detail?.idnumber === PAGE_ID);
+
+  if (dp01Entry) {
+    const pageContent = pages.find((p) => p.id === dp01Entry.mod.instance);
+    const content     = pageContent?.content ?? "";
+    const pageName    = dp01Entry.mod.name ?? "";
+
+    nombreProfesor  = nameValidate(state, pageName, teacherNames || "—");
+    correoProfesor  = emailValidate(state, content, teacherEmails || "—");
+    horarioAtencion = validateOpeningHours(state, content);
+    fotografia      = validateFotografia(state, content, photoValidationTexts);
   } else {
     nombreProfesor  = STATUS.notExist;
     correoProfesor  = STATUS.notExist;

@@ -409,7 +409,7 @@ export default function AlistamientoPage() {
     );
     const csv = [header, ...lines].join("\n");
 
-    const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
+    const blob = new Blob(["\uFEFF", csv], { type: "text/csv;charset=utf-8;" });
     const url = URL.createObjectURL(blob);
     const link = document.createElement("a");
     const categoryName = categories.find((c) => c.id === payload?.categoryId)?.name ?? "categoria";
