@@ -289,6 +289,25 @@ export interface GradeItem {
   itemmodule: string | null;
   idnumber: string;
   categoryid: number | null;
+  /** Normalized weight of this item in its parent category (0–1). May be null if not applicable. */
+  weightraw?: number | null;
+  /** Percentage contribution to the course grade. May be null. */
+  percentageraw?: number | null;
+}
+
+export interface MoodleEnrolledUser {
+  id: number;
+  fullname: string;
+  email: string;
+  /** Institutional document / idnumber */
+  idnumber?: string;
+  roles?: Array<{ roleid: number; name: string; shortname: string }>;
+}
+
+export interface MoodleForumDiscussion {
+  id: number;
+  name: string;
+  userid: number;
 }
 
 export interface GradeCategoryItem {
