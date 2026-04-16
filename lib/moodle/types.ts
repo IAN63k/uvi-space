@@ -287,11 +287,16 @@ export interface GradeItem {
   itemname: string | null;
   itemtype: string;
   itemmodule: string | null;
+  /** For category items: the grade_categories.id this item represents (its own category).
+   *  Match activity items' `categoryid` against this to find children of a category. */
+  iteminstance: number | null;
   idnumber: string;
+  /** For activity items: the grade_categories.id of the parent category.
+   *  For category items: null (top-level) or the parent category's id. */
   categoryid: number | null;
-  /** Normalized weight of this item in its parent category (0–1). May be null if not applicable. */
+  /** Normalized weight of this item in its parent category (0–1). Not returned by all API versions. */
   weightraw?: number | null;
-  /** Percentage contribution to the course grade. May be null. */
+  /** Percentage contribution to the course grade. Not returned by all API versions. */
   percentageraw?: number | null;
 }
 
