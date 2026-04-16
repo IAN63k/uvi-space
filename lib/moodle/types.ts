@@ -375,7 +375,9 @@ export interface GradeItem {
   itemmodule: string | null;
   idnumber: string;
   categoryid: number | null;
-  /** Instance ID of the activity (links to assign.id, quiz.id, forum.id, etc.) */
+  /** For category items: the grade_categories.id this item represents (its own category id).
+   *  For activity/mod items: the activity instance id (assign.id, quiz.id, etc.).
+   *  Use categoryItem.iteminstance to match against activity items' `categoryid`. */
   iteminstance?: number;
   grademin?: number;
   grademax?: number;
