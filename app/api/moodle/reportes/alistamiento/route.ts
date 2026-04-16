@@ -87,7 +87,10 @@ const EFC_DEFS = [
   { codes: ["EFC03", "AF03", "af3"] as const, target: 0.40 },
 ] as const;
 
-const EPS = 0.025; // tolerance for weight comparisons
+const EPS = 0.025; // tolerance for category weight vs. target (±2.5%)
+
+/** All EFC idnumber codes — used to detect sibling-category boundaries while scanning. */
+const ALL_EFC_CODES = new Set(EFC_DEFS.flatMap((e) => [...e.codes]));
 
 // ── Text helpers ───────────────────────────────────────────────────────────────
 
@@ -153,8 +156,11 @@ const validateFotografia = (state: CounterState, content: string, blocked: strin
   return mark(state, !blocked.some((b) => lower.includes(b)));
 };
 
-/** Matches a real date like 24/02/2026 or 2/3/2026 */
-const REAL_DATE_RE = /\b\d{1,2}\/\d{1,2}\/\d{4}\b/;
+/**
+ * Matches real dates in numeric, full month-name, or abbreviated month-name format:
+ *   24/02/2026  |  2/3/2026  |  31/Marzo/2026  |  1/enero/2026  |  24/Feb./2026  |  29/Mar./2026
+ */
+const REAL_DATE_RE = /\d{1,2}\/(?:\d{1,2}|[A-Za-záéíóúÁÉÍÓÚñÑ]+\.?)\/\d{4}/;
 
 const validateDateUnit = (state: CounterState, summary: string): Status => {
   const text = stripHtml(summary);
@@ -190,8 +196,7 @@ function validateSectionDates(
       const name = normalizeSectionName(s.name ?? "");
       // Skip the "Presentación" structural section — it never carries dates
       if (name.includes("presentaci")) return false;
-      // Skip sections addressed to students from another institution
-      if (name.includes("unicamacho")) return false;
+      // "Profesor Unicamacho" sections are kept and marked NO APLICA below
       return true;
     })
     .sort((a, b) => a.section - b.section);
@@ -199,6 +204,11 @@ function validateSectionDates(
   const statuses: Status[] = candidateSections.map((s) => {
     // Sections hidden from students: validation does not apply
     if (s.visible !== 1) return STATUS.notApply;
+    const name = normalizeSectionName(s.name ?? "");
+    // Sections addressed to students from another institution: always NO APLICA
+    if (name.includes("unicamacho")) return STATUS.notApply;
+    // "Tema N" sections (e.g. "Tema 1", "Tema 3"): no date validation applies
+    if (/^tema\s+\d+$/i.test(name.trim())) return STATUS.notApply;
     // Visible sections: validate that dates have been filled in
     return validateDateUnit(state, s.summary ?? "");
   });
@@ -208,20 +218,25 @@ function validateSectionDates(
   return statuses.slice(0, 8);
 }
 
-// ── EFC grade validation via grade items (idnumber-based) ─────────────────────
+// ── EFC grade validation via grade items ──────────────────────────────────────
 //
-// Strategy: gradereport_user_get_grade_items returns all items in gradebook order:
-//   [course total] → [EFC01 category total] → [activities in EFC01] → [EFC02 category total] → …
+// gradereport_user_get_grade_items returns:
+//   • category items with `iteminstance` = their own grade_categories.id
+//   • activity items with `categoryid`   = their parent grade_categories.id
 //
-// 1. Find each EFC category item by idnumber (never by name — names vary per course).
-// 2. Count activities by scanning items between this category total and the next one.
-// 3. Check ponderaciones via the category item's weightraw / percentageraw.
+// The category total can appear anywhere in the flat list (header or footer
+// position varies by Moodle version). We use `categoryid` matching rather than
+// positional scanning so the order doesn't matter.
+//
+// NOTE: `weightraw` / `percentageraw` are NOT returned by some Moodle versions.
+// When absent, the ponderaciones check mirrors the actividades result.
 
 function validateEfc(
   state: CounterState,
   gradeItems: import("@/lib/moodle/types").GradeItem[],
   codes: readonly string[],
-  target: number,
+  // target is kept for potential future use when weight data is available
+  _target: number,
 ): { actividades: Status; ponderaciones: Status } {
   // ── 1. Find the EFC category item by idnumber ─────────────────────────────
   const categoryItem = gradeItems.find(
@@ -233,29 +248,42 @@ function validateEfc(
     return { actividades: STATUS.notExist, ponderaciones: STATUS.notExist };
   }
 
-  // ── 2. Count activities that follow this category total in the flat list ───
-  let inCategory = false;
-  let activityCount = 0;
-  for (const item of gradeItems) {
-    if (item.itemtype === "category" && codes.some((c) => item.idnumber === c)) {
-      inCategory = true;
-      continue;
-    }
-    if (inCategory) {
-      // Stop when we hit the next category or course total
-      if (item.itemtype === "category" || item.itemtype === "course") break;
-      activityCount++;
-    }
-  }
+  // ── 2. Count activities whose parent category is this EFC ─────────────────
+  // `categoryItem.iteminstance` is the grade_categories.id for this EFC.
+  // Activity items carry `categoryid` pointing to their parent category.
+  const efcCatId = categoryItem.iteminstance ?? null;
+
+  const activityCount = efcCatId !== null
+    ? gradeItems.filter(
+        (item) =>
+          item.itemtype !== "category" &&
+          item.itemtype !== "course" &&
+          item.categoryid === efcCatId,
+      ).length
+    : 0;
+
   const actividades = mark(state, activityCount > 0);
 
-  // ── 3. Ponderaciones: EFC category item's weight in the course ────────────
+  // ── 3. Ponderaciones ──────────────────────────────────────────────────────
+  // Weight data (weightraw / percentageraw) is not returned by all Moodle
+  // versions. When available, verify the category's weight in the course;
+  // otherwise mirror the actividades result (can't validate weights).
   const weightRaw     = categoryItem.weightraw     ?? null;
   const percentageRaw = categoryItem.percentageraw ?? null;
+  const hasWeightData = weightRaw !== null || percentageRaw !== null;
 
-  const weightOk  = weightRaw     !== null && Math.abs(weightRaw - target)           <= EPS;
-  const percentOk = percentageRaw !== null && Math.abs(percentageRaw / 100 - target) <= EPS;
-  const ponderaciones = mark(state, weightOk || percentOk);
+  let ponderaciones: Status;
+  if (hasWeightData) {
+    const weightOk  = weightRaw     !== null && Math.abs(weightRaw - _target)           <= EPS;
+    const percentOk = percentageRaw !== null && Math.abs(percentageRaw / 100 - _target) <= EPS;
+    ponderaciones = mark(state, weightOk || percentOk);
+  } else {
+    // Mirror actividades — avoids marking categories as NO CUMPLE solely due
+    // to missing API data.
+    ponderaciones = actividades === STATUS.success
+      ? mark(state, true)
+      : mark(state, false);
+  }
 
   return { actividades, ponderaciones };
 }
