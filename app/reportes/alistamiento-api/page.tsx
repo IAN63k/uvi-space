@@ -11,6 +11,7 @@ import {
   Loader2,
   ScanSearch,
   AlertTriangle,
+  ExternalLink,
 } from "lucide-react";
 
 import { ReportTableControls } from "@/components/report-table-controls";
@@ -159,6 +160,7 @@ export default function AlistamientoApiPage() {
   const [mode, setMode]                     = useState<PageMode>("category");
   const [payload, setPayload]               = useState<ApiResponse | null>(null);
   const [moodleConfigLoaded, setMoodleConfigLoaded] = useState<boolean | null>(null);
+  const [moodleBaseUrl, setMoodleBaseUrl]           = useState<string | null>(null);
   const [settingsOpen, setSettingsOpen]     = useState(false);
   const [photoValidationTexts, setPhotoValidationTexts] = useState<string[]>([
     "https://www.uniajc.edu.co/wp-content/uploads/2023/07/foto-de-profesor230-x-939.gif",
@@ -190,6 +192,7 @@ export default function AlistamientoApiPage() {
       const cfg = await loadMoodleConfig();
       setMoodleConfigLoaded(cfg !== null);
       if (!cfg) return;
+      setMoodleBaseUrl(cfg.moodleUrl.replace(/\/$/, ""));
 
       setCategoriesLoading(true);
       setCategoriesError(null);
@@ -423,7 +426,7 @@ export default function AlistamientoApiPage() {
     const header = active.map((c) => esc(columnLabels[c])).join(",");
     const lines  = filteredResults.map((row) => active.map((c) => esc(toCell(row, c))).join(","));
     const csv    = [header, ...lines].join("\n");
-    const blob   = new Blob([csv], { type: "text/csv;charset=utf-8;" });
+    const blob   = new Blob(["\uFEFF", csv], { type: "text/csv;charset=utf-8;" });
     const url    = URL.createObjectURL(blob);
     const link   = document.createElement("a");
     const label  = mode === "individual"
@@ -629,7 +632,7 @@ export default function AlistamientoApiPage() {
         <>
           <form onSubmit={(e) => void onSubmitIndividual(e)}>
             <div className="rounded-2xl border bg-muted/10 p-5 shadow-xs">
-              <div className="flex flex-wrap items-end gap-4">
+              <div className="flex flex-wrap items-center gap-4">
                 <div className="min-w-50 flex-1 space-y-1.5">
                   <Label
                     htmlFor="courseIdInput"
@@ -952,7 +955,24 @@ export default function AlistamientoApiPage() {
                             {visibleColumns.programa  && <td className="px-3 py-2 max-w-[160px] truncate">{item.program}</td>}
                             {visibleColumns.semestre  && <td className="px-3 py-2">{item.semester}</td>}
                             {visibleColumns.idCurso   && <td className="px-3 py-2 tabular-nums">{item.courseId}</td>}
-                            {visibleColumns.curso     && <td className="px-3 py-2 max-w-[200px]">{item.courseName}</td>}
+                            {visibleColumns.curso && (
+                              <td className="px-3 py-2 max-w-[200px]">
+                                <span className="flex items-start gap-1.5">
+                                  <span className="flex-1 leading-snug">{item.courseName}</span>
+                                  {moodleBaseUrl && (
+                                    <a
+                                      href={`${moodleBaseUrl}/course/view.php?id=${item.courseId}`}
+                                      target="_blank"
+                                      rel="noopener noreferrer"
+                                      title="Abrir curso en Moodle"
+                                      className="mt-0.5 shrink-0 text-muted-foreground/50 transition-colors hover:text-primary"
+                                    >
+                                      <ExternalLink className="h-3 w-3" />
+                                    </a>
+                                  )}
+                                </span>
+                              </td>
+                            )}
                             {visibleColumns.codigo    && <td className="px-3 py-2 font-mono text-xs">{item.courseCode}</td>}
                             {visibleColumns.docentes  && (
                               <td className="px-3 py-2 whitespace-pre-line">
