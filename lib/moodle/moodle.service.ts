@@ -1,6 +1,6 @@
 import https from "node:https";
 import axios from "axios";
-import type { MoodleCategory, MoodleCourse, ValidationRules, CourseError, CourseValidationResult, CategoryNode, CourseSummary, CourseSection, CourseModuleDetail, MoodlePage, MoodleForum, MoodleBlock, GradeTreeNode, GradeItem } from "./types";
+import type { MoodleCategory, MoodleCourse, MoodleEnrolledUser, ValidationRules, CourseError, CourseValidationResult, CategoryNode, CourseSummary, CourseSection, CourseModuleDetail, MoodlePage, MoodleForum, MoodleBlock, GradeTreeNode, GradeItem, MoodleAssignment, MoodleQuiz } from "./types";
 
 // Axios instance with a custom HTTPS agent that:
 // - Disables strict SSL verification (handles self-signed / intermediate certs common in .edu environments)
@@ -496,4 +496,60 @@ export async function getForumsByCourse(
     extraParams: { "courseids[0]": courseId },
   });
   return Array.isArray(data) ? data : [];
+}
+
+/** Fetches all assignment instances for a course in a single call.
+ *  includenotenrolledcourses=1 is required so that admin/manager tokens that
+ *  are not enrolled in the course still receive the assignments list. */
+export async function getAssignmentsByCourse(
+  moodleUrl: string,
+  token: string,
+  courseId: number,
+): Promise<MoodleAssignment[]> {
+  const data = await apiCall<{ courses?: Array<{ id: number; assignments: MoodleAssignment[] }> }>({
+    moodleUrl,
+    token,
+    wsfunction: "mod_assign_get_assignments",
+    extraParams: { "courseids[0]": courseId, includenotenrolledcourses: 1 },
+  });
+  return data.courses?.[0]?.assignments ?? [];
+}
+
+/** Fetches enrolled users in a course, optionally filtered by role.
+ *  roleId 3 = teacher/editingteacher, 5 = student. Omit to get all roles. */
+export async function getEnrolledUsersByRole(
+  moodleUrl: string,
+  token: string,
+  courseId: number,
+  roleId?: number,
+): Promise<MoodleEnrolledUser[]> {
+  const extraParams: Record<string, string | number> = { courseid: courseId };
+  if (roleId !== undefined) {
+    extraParams["options[0][name]"] = "roleid";
+    extraParams["options[0][value]"] = roleId;
+  }
+
+  const data = await apiCall<MoodleEnrolledUser[]>({
+    moodleUrl,
+    token,
+    wsfunction: "core_enrol_get_enrolled_users",
+    extraParams,
+  });
+
+  return Array.isArray(data) ? data : [];
+}
+
+/** Fetches all quiz instances for a course in a single call. */
+export async function getQuizzesByCourse(
+  moodleUrl: string,
+  token: string,
+  courseId: number,
+): Promise<MoodleQuiz[]> {
+  const data = await apiCall<{ quizzes?: MoodleQuiz[] }>({
+    moodleUrl,
+    token,
+    wsfunction: "mod_quiz_get_quizzes_by_courses",
+    extraParams: { "courseids[0]": courseId },
+  });
+  return data.quizzes ?? [];
 }

@@ -11,6 +11,14 @@ import type {
   GradebookCategoryCheck,
   GradeCategoryItem,
   GradeTreeNode,
+  MoodleAssignmentConfig,
+  AssignActivityChecks,
+  AssignActivityCheck,
+  QuizActivityChecks,
+  QuizActivityCheck,
+  ForumActivityChecks,
+  ForumActivityCheck,
+  ActivitySettingsResult,
 } from "@/lib/moodle/types";
 import {
   getCourseContents,
@@ -20,6 +28,8 @@ import {
   getCourseBlocks,
   getGradeTree,
   getGradeItems,
+  getAssignmentsByCourse,
+  getQuizzesByCourse,
 } from "@/lib/moodle/moodle.service";
 
 // ── Configurable constants ────────────────────────────────────────────────────
@@ -55,22 +65,29 @@ export const CONTENT_VALIDATION_CONSTANTS = {
   EXPECTED_FORUM_TYPE: "general",
   /** Expected modplural for the MS Teams meeting module */
   EXPECTED_MEETING_MODPLURAL: "MS Meetings",
-  /**
-   * Formats where section 0 is navigation chrome — the professor presentation
-   * module lives at section 1. All other formats use section 0.
-   * Currently only "onetopic" (tiles layout) applies.
-   */
+  /** Kept for reference — all known formats use section 0 as the presentation section. */
   TAB_BASED_FORMATS: ["onetopic", "tiles"] as readonly string[],
+  // ── Activity settings expected values ────────────────────────────────────────
+  /** Maximum grade expected on every graded activity */
+  EXPECTED_GRADE_MAX: 5,
+  /** Maximum number of uploaded files for assignments */
+  EXPECTED_MAX_FILES: 3,
+  /** Maximum file upload size for assignments in bytes (5 MB) */
+  EXPECTED_MAX_FILE_SIZE_BYTES: 5 * 1024 * 1024,
+  /** Accepted file types for assignments */
+  EXPECTED_FILE_TYPES: "*",
+  /** Pass grade expected on every graded activity */
+  EXPECTED_GRADE_PASS: 3,
 } as const;
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
 /**
  * Returns the section index that should contain the professor presentation
- * module, based on the course format.
+ * module. All course formats (including onetopic/tiles) use section 0.
  */
-export function getPresentationSectionNumber(format: string): number {
-  return CONTENT_VALIDATION_CONSTANTS.TAB_BASED_FORMATS.includes(format) ? 1 : 0;
+export function getPresentationSectionNumber(_format: string): number {
+  return 0;
 }
 
 function makeCheck(
@@ -201,8 +218,9 @@ export async function validateCourseContent(
   const expectedForumIdnumber = CONTENT_VALIDATION_CONSTANTS.EXPECTED_FORUM_IDNUMBER;
   const expectedForumType     = CONTENT_VALIDATION_CONSTANTS.EXPECTED_FORUM_TYPE;
 
-  // --- Parallel fetch: sections + pages + forums + blocks ---------------------
-  // Grade tree and grade items are fetched separately to handle access errors gracefully.
+  // --- Parallel fetch: sections + pages + forums + blocks ----------------------
+  // assigns, quizzes, grade tree and grade items are fetched separately so that
+  // access errors on any of them degrade gracefully without breaking the rest.
   const [sections, pages, forums, courseBlocksList] = await Promise.all([
     getCourseContents(moodleUrl, token, courseId),
     getPagesByCourse(moodleUrl, token, courseId),
@@ -210,14 +228,24 @@ export async function validateCourseContent(
     getCourseBlocks(moodleUrl, token, courseId),
   ]);
 
+  let assigns: Awaited<ReturnType<typeof getAssignmentsByCourse>> = [];
+  let assignsError: string | null = null;
+  let quizzes: Awaited<ReturnType<typeof getQuizzesByCourse>> = [];
+  let quizzesError: string | null = null;
   let gradeTree: Awaited<ReturnType<typeof getGradeTree>> | null = null;
   let gradeTreeError: string | null = null;
   let allGradeItems: Awaited<ReturnType<typeof getGradeItems>> = [];
   let gradeItemsError: string | null = null;
 
   await Promise.all([
+    getAssignmentsByCourse(moodleUrl, token, courseId)
+      .then((a) => { assigns = a; console.log("[mod_assign_get_assignments]", JSON.stringify(a, null, 2)); })
+      .catch((err) => { assignsError = err instanceof Error ? err.message : "Error desconocido"; }),
+    getQuizzesByCourse(moodleUrl, token, courseId)
+      .then((q) => { quizzes = q; console.log("[mod_quiz_get_quizzes_by_courses]", JSON.stringify(q, null, 2)); })
+      .catch((err) => { quizzesError = err instanceof Error ? err.message : "Error desconocido"; }),
     getGradeTree(moodleUrl, token, courseId)
-      .then((t) => { gradeTree = t; console.log("[core_grades_get_grade_tree]", JSON.stringify(t, null, 2)); })
+      .then((t) => { gradeTree = t; })
       .catch((err) => { gradeTreeError = err instanceof Error ? err.message : "Error desconocido"; }),
     getGradeItems(moodleUrl, token, courseId, GRADEBOOK_SAMPLE_USERID)
       .then((items) => { allGradeItems = items; })
@@ -566,9 +594,8 @@ export async function validateCourseContent(
   // ── Section dates validation ───────────────────────────────────────────────
 
   const sectionDatesResult: CourseContentValidationResult["sectionDates"] = (() => {
-    // For tab-based formats (e.g. tiles), sections 0 and 1 are navigation chrome,
-    // so content sections start at index 2. For all other formats, start at 1.
-    const firstContentSection = CONTENT_VALIDATION_CONSTANTS.TAB_BASED_FORMATS.includes(courseFormat) ? 2 : 1;
+    // Presentation is always section 0; content sections start at 1.
+    const firstContentSection = 1;
 
     // Only validate visible content sections (section >= firstContentSection)
     // Exclude sections named "Estudiante Unicamacho" or whose name contains "Tema"
@@ -711,6 +738,251 @@ export async function validateCourseContent(
     return { categories, categoryItems, efcChecks, error: combinedError, passed };
   })();
 
+  // ── Activity settings validation ───────────────────────────────────────────
+
+  const activitySettingsResult: ActivitySettingsResult = (() => {
+    const { EXPECTED_GRADE_MAX, EXPECTED_GRADE_PASS } = CONTENT_VALIDATION_CONSTANTS;
+
+    // Map cmid → completion mode (from sections data, avoids extra API calls)
+    const completionByCmid = new Map<number, number>();
+    for (const section of sections) {
+      for (const mod of section.modules) {
+        completionByCmid.set(mod.id, mod.completion);
+      }
+    }
+
+    // Map "modname:instanceId" → gradepass (from already-fetched grade items)
+    const gradePassMap    = new Map<string, number>();
+    // Fallback map by cmid in case iteminstance lookup fails
+    const gradePassByCmid = new Map<number, number>();
+    for (const item of allGradeItems) {
+      if (
+        item.itemtype === "mod" &&
+        item.itemmodule &&
+        item.gradepass !== undefined &&
+        item.gradepass > 0
+      ) {
+        if (item.iteminstance !== undefined) {
+          gradePassMap.set(`${item.itemmodule}:${item.iteminstance}`, item.gradepass);
+        }
+        if (item.cmid !== undefined) {
+          gradePassByCmid.set(item.cmid, item.gradepass);
+        }
+      }
+    }
+
+    // Helper: look up a single assign plugin config value
+    const getAssignConfig = (
+      configs: MoodleAssignmentConfig[] | undefined,
+      plugin: string,
+      subtype: string,
+      name: string,
+    ): string | null =>
+      configs?.find((c) => c.plugin === plugin && c.subtype === subtype && c.name === name)?.value ?? null;
+
+    // ── Assignments ────────────────────────────────────────────────────────────
+    const assignmentChecks: AssignActivityCheck[] = assigns.map((a) => {
+      const { EXPECTED_GRADE_MAX, EXPECTED_GRADE_PASS, EXPECTED_MAX_FILES, EXPECTED_MAX_FILE_SIZE_BYTES, EXPECTED_FILE_TYPES } = CONTENT_VALIDATION_CONSTANTS;
+      const completionMode = completionByCmid.get(a.cmid) ?? 0;
+      const gradePassVal   = gradePassMap.get(`assign:${a.id}`) ?? gradePassByCmid.get(a.cmid);
+
+      // assignsubmission_file plugin configs
+      const maxFilesRaw    = getAssignConfig(a.configs, "file", "assignsubmission", "maxfilesubmissions");
+      const maxFilesNum    = maxFilesRaw !== null ? parseInt(maxFilesRaw, 10) : null;
+      const maxFileSizeRaw = getAssignConfig(a.configs, "file", "assignsubmission", "maxsubmissionsizebytes");
+      const maxFileSizeNum = maxFileSizeRaw !== null ? parseInt(maxFileSizeRaw, 10) : null;
+      const fileTypesRaw   = getAssignConfig(a.configs, "file", "assignsubmission", "filetypeslist");
+
+      // assignfeedback plugin configs
+      const fbComments = getAssignConfig(a.configs, "comments", "assignfeedback", "enabled");
+      const fbPdf      = getAssignConfig(a.configs, "editpdf",  "assignfeedback", "enabled");
+      const fbFile     = getAssignConfig(a.configs, "file",     "assignfeedback", "enabled");
+      const fbOffline  = getAssignConfig(a.configs, "offline",  "assignfeedback", "enabled");
+
+      const checks: AssignActivityChecks = {
+        grade: makeCheck(
+          a.grade === EXPECTED_GRADE_MAX,
+          EXPECTED_GRADE_MAX,
+          a.grade,
+          `Puntuación máxima = ${EXPECTED_GRADE_MAX}`,
+        ),
+        teamSubmission: makeCheck(
+          a.teamsubmission === 0,
+          0,
+          a.teamsubmission,
+          "Sin entrega por grupos",
+        ),
+        dueDate: makeCheck(
+          a.duedate === 0,
+          0,
+          a.duedate,
+          "Sin fecha de entrega",
+        ),
+        allowSubmissionsFrom: makeCheck(
+          a.allowsubmissionsfromdate === 0,
+          0,
+          a.allowsubmissionsfromdate,
+          "Sin fecha de inicio de entregas",
+        ),
+        completionSubmit: makeCheck(
+          a.completionsubmit === 1,
+          1,
+          a.completionsubmit,
+          "Finalización: debe entregar",
+        ),
+        completionView: makeCheck(
+          completionMode === 2,
+          2,
+          completionMode,
+          "Finalización automática activada",
+        ),
+        maxFiles: makeCheck(
+          maxFilesNum === EXPECTED_MAX_FILES,
+          EXPECTED_MAX_FILES,
+          maxFilesNum ?? "(no encontrado)",
+          `Máx. archivos = ${EXPECTED_MAX_FILES}`,
+        ),
+        maxFileSize: makeCheck(
+          maxFileSizeNum === EXPECTED_MAX_FILE_SIZE_BYTES,
+          `${EXPECTED_MAX_FILE_SIZE_BYTES} (5 MB)`,
+          maxFileSizeNum ?? "(no encontrado)",
+          "Tamaño máximo de archivo = 5 MB",
+        ),
+        fileTypesList: makeCheck(
+          fileTypesRaw === EXPECTED_FILE_TYPES,
+          EXPECTED_FILE_TYPES,
+          fileTypesRaw ?? "(no encontrado)",
+          `Tipos de archivo = ${EXPECTED_FILE_TYPES}`,
+        ),
+        feedbackComments: makeCheck(
+          fbComments === "1",
+          "1",
+          fbComments ?? "(no encontrado)",
+          "Retroalimentación: Comentarios",
+        ),
+        feedbackPdf: makeCheck(
+          fbPdf === "1",
+          "1",
+          fbPdf ?? "(no encontrado)",
+          "Retroalimentación: Anotaciones PDF",
+        ),
+        feedbackFile: makeCheck(
+          fbFile === "1",
+          "1",
+          fbFile ?? "(no encontrado)",
+          "Retroalimentación: Archivos",
+        ),
+        feedbackOffline: makeCheck(
+          fbOffline === "1",
+          "1",
+          fbOffline ?? "(no encontrado)",
+          "Retroalimentación: Hoja de calificación offline",
+        ),
+        gradePass: makeCheck(
+          gradePassVal !== undefined && gradePassVal === EXPECTED_GRADE_PASS,
+          EXPECTED_GRADE_PASS,
+          gradePassVal ?? "(no encontrada)",
+          `Calificación para aprobar: ${EXPECTED_GRADE_PASS},0`,
+        ),
+      };
+
+      return { cmid: a.cmid, name: a.name, checks, passed: Object.values(checks).every((c) => c.passed) };
+    });
+
+    // ── Quizzes ────────────────────────────────────────────────────────────────
+    const quizChecks: QuizActivityCheck[] = quizzes.map((q) => {
+      const completionMode = completionByCmid.get(q.coursemodule) ?? 0;
+      const gradePassVal   = gradePassMap.get(`quiz:${q.id}`) ?? gradePassByCmid.get(q.coursemodule);
+
+      const checks: QuizActivityChecks = {
+        grade: makeCheck(
+          q.grade === EXPECTED_GRADE_MAX,
+          EXPECTED_GRADE_MAX,
+          q.grade,
+          `Puntuación máxima = ${EXPECTED_GRADE_MAX}`,
+        ),
+        timeOpen: makeCheck(
+          q.timeopen === 0,
+          0,
+          q.timeopen,
+          "Sin fecha de apertura",
+        ),
+        timeClose: makeCheck(
+          q.timeclose === 0,
+          0,
+          q.timeclose,
+          "Sin fecha de cierre",
+        ),
+        completionPass: makeCheck(
+          q.completionpass === 1,
+          1,
+          q.completionpass,
+          "Finalización: debe aprobar",
+        ),
+        completionView: makeCheck(
+          completionMode === 2,
+          2,
+          completionMode,
+          "Finalización automática activada",
+        ),
+        gradePass: makeCheck(
+          gradePassVal !== undefined && gradePassVal === EXPECTED_GRADE_PASS,
+          EXPECTED_GRADE_PASS,
+          gradePassVal ?? "(no encontrada)",
+          `Calificación para aprobar: ${EXPECTED_GRADE_PASS},0`,
+        ),
+      };
+
+      return { cmid: q.coursemodule, name: q.name, checks, passed: Object.values(checks).every((c) => c.passed) };
+    });
+
+    // ── Forums ─────────────────────────────────────────────────────────────────
+    const forumChecks: ForumActivityCheck[] = forums.map((f) => {
+      const completionMode       = completionByCmid.get(f.cmid) ?? 0;
+      const scale                = f.scale ?? 0;
+      const completionDiscussions = f.completiondiscussions ?? 0;
+
+      const checks: ForumActivityChecks = {
+        scale: makeCheck(
+          scale === EXPECTED_GRADE_MAX,
+          EXPECTED_GRADE_MAX,
+          scale,
+          `Puntuación máxima = ${EXPECTED_GRADE_MAX}`,
+        ),
+        completionDiscussions: makeCheck(
+          completionDiscussions >= 1,
+          "≥ 1",
+          completionDiscussions,
+          "Finalización: mínimo 1 discusión",
+        ),
+        completionView: makeCheck(
+          completionMode === 2,
+          2,
+          completionMode,
+          "Finalización automática activada",
+        ),
+      };
+
+      return { cmid: f.cmid, name: f.name, checks, passed: Object.values(checks).every((c) => c.passed) };
+    });
+
+    const combinedActivityError = assignsError ?? quizzesError ?? undefined;
+
+    const passed =
+      combinedActivityError === undefined &&
+      (assignmentChecks.length === 0 || assignmentChecks.every((a) => a.passed)) &&
+      (quizChecks.length      === 0 || quizChecks.every((q) => q.passed))        &&
+      (forumChecks.length     === 0 || forumChecks.every((f) => f.passed));
+
+    return {
+      assignments: assignmentChecks,
+      quizzes:     quizChecks,
+      forums:      forumChecks,
+      error:       combinedActivityError,
+      passed,
+    };
+  })();
+
   // ── Overall result ─────────────────────────────────────────────────────────
 
   const passed =
@@ -721,7 +993,8 @@ export async function validateCourseContent(
     microcurriculumResult.passed &&
     blocksResult.passed &&
     sectionDatesResult.passed &&
-    gradebookResult.passed;
+    gradebookResult.passed &&
+    activitySettingsResult.passed;
 
   return {
     courseId,
@@ -737,6 +1010,8 @@ export async function validateCourseContent(
     blocks: blocksResult,
     sectionDates: sectionDatesResult,
     gradebook: gradebookResult,
+    activitySettings: activitySettingsResult,
+    courseUrl: `${moodleUrl.replace(/\/$/, "")}/course/view.php?id=${courseId}`,
     passed,
   };
 }
