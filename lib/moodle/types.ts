@@ -213,6 +213,65 @@ export interface MoodleForum {
   intro: string;
   cmid: number;
   timemodified: number;
+  // Additional fields returned by mod_forum_get_forums_by_courses
+  forcesubscribe?: number;
+  /** 0 = no rating; otherwise an aggregate type */
+  assessed?: number;
+  /** Positive = max points; negative = scale ID; 0 = no rating */
+  scale?: number;
+  maxbytes?: number;
+  maxattachments?: number;
+  completiondiscussions?: number;
+  completionreplies?: number;
+}
+
+// ── Activity Settings API types ───────────────────────────────────────────────
+
+export interface MoodleAssignmentConfig {
+  plugin: string;
+  subtype: string;
+  name: string;
+  value: string;
+}
+
+export interface MoodleAssignment {
+  id: number;
+  cmid: number;
+  course: number;
+  name: string;
+  /** Maximum grade (positive) or scale ID (negative) */
+  grade: number;
+  teamsubmission: number;
+  duedate: number;
+  allowsubmissionsfromdate: number;
+  submissiondrafts: number;
+  sendnotifications: number;
+  requiresubmissionstatement: number;
+  blindmarking: number;
+  maxattempts: number;
+  completionsubmit: number;
+  configs?: MoodleAssignmentConfig[];
+}
+
+export interface MoodleQuiz {
+  id: number;
+  /** cmid */
+  coursemodule: number;
+  course: number;
+  name: string;
+  timeopen: number;
+  timeclose: number;
+  timelimit: number;
+  attempts: number;
+  grademethod: number;
+  questionsperpage: number;
+  shuffleanswers: number;
+  preferredbehaviour: string;
+  overduehandling: string;
+  graceperiod: number;
+  completionpass: number;
+  /** Maximum grade for the quiz */
+  grade: number;
 }
 
 export interface ValidationCheck {
@@ -282,6 +341,26 @@ export interface GradebookCategoryCheck {
   passed: boolean;
 }
 
+export interface MoodleEnrolledUser {
+  id: number;
+  username: string;
+  firstname: string;
+  lastname: string;
+  fullname: string;
+  email: string;
+  idnumber?: string;
+}
+
+export interface GradeItemGrade {
+  userid: number;
+  /** Grade value as a string (e.g. "4.50000") or null/"-" when ungraded */
+  grade: string | null;
+  locked: boolean;
+  hidden: boolean;
+  feedback?: string | null;
+  feedbackformat?: number;
+}
+
 export interface GradeItem {
   id: number;
   itemname: string | null;
@@ -289,6 +368,15 @@ export interface GradeItem {
   itemmodule: string | null;
   idnumber: string;
   categoryid: number | null;
+  /** Instance ID of the activity (links to assign.id, quiz.id, forum.id, etc.) */
+  iteminstance?: number;
+  grademin?: number;
+  grademax?: number;
+  /** Pass grade (e.g. 3.0) */
+  gradepass?: number;
+  cmid?: number;
+  /** Grade values for the requested user(s) */
+  grades?: GradeItemGrade[];
 }
 
 export interface GradeCategoryItem {
@@ -308,6 +396,69 @@ export interface MoodleBlock {
 
 /** One ValidationCheck per required block name */
 export type BlocksChecks = Record<string, ValidationCheck>;
+
+// ── Activity Settings check types ─────────────────────────────────────────────
+
+export interface AssignActivityChecks {
+  grade: ValidationCheck;               // Puntuación máxima = 5
+  teamSubmission: ValidationCheck;       // Sin entrega por grupos
+  dueDate: ValidationCheck;             // Sin fecha de entrega
+  allowSubmissionsFrom: ValidationCheck; // Sin fecha de inicio de entregas
+  completionSubmit: ValidationCheck;     // Finalización: debe entregar
+  completionView: ValidationCheck;       // Finalización automática activada
+  maxFiles: ValidationCheck;             // Máx. archivos = 3
+  maxFileSize: ValidationCheck;          // Tamaño máximo de archivo = 5 MB
+  fileTypesList: ValidationCheck;        // Tipos de archivo = *
+  feedbackComments: ValidationCheck;     // Retroalimentación: Comentarios
+  feedbackPdf: ValidationCheck;          // Retroalimentación: Anotaciones PDF
+  feedbackFile: ValidationCheck;         // Retroalimentación: Archivos
+  feedbackOffline: ValidationCheck;      // Retroalimentación: Hoja offline
+  gradePass: ValidationCheck;            // Calificación para aprobar: 3,0
+}
+
+export interface AssignActivityCheck {
+  cmid: number;
+  name: string;
+  checks: AssignActivityChecks;
+  passed: boolean;
+}
+
+export interface QuizActivityChecks {
+  grade: ValidationCheck;           // Puntuación máxima = 5
+  timeOpen: ValidationCheck;        // Sin fecha de apertura
+  timeClose: ValidationCheck;       // Sin fecha de cierre
+  completionPass: ValidationCheck;  // Finalización: debe aprobar
+  completionView: ValidationCheck;  // Finalización automática activada
+  gradePass: ValidationCheck;       // Calificación para aprobar: 3,0
+}
+
+export interface QuizActivityCheck {
+  cmid: number;
+  name: string;
+  checks: QuizActivityChecks;
+  passed: boolean;
+}
+
+export interface ForumActivityChecks {
+  scale: ValidationCheck;                 // Puntuación máxima = 5
+  completionDiscussions: ValidationCheck; // Finalización: mínimo 1 discusión
+  completionView: ValidationCheck;        // Finalización automática activada
+}
+
+export interface ForumActivityCheck {
+  cmid: number;
+  name: string;
+  checks: ForumActivityChecks;
+  passed: boolean;
+}
+
+export interface ActivitySettingsResult {
+  assignments: AssignActivityCheck[];
+  quizzes: QuizActivityCheck[];
+  forums: ForumActivityCheck[];
+  error?: string;
+  passed: boolean;
+}
 
 export interface CourseContentValidationResult {
   courseId: number;
@@ -367,6 +518,9 @@ export interface CourseContentValidationResult {
     error?: string;
     passed: boolean;
   };
+  activitySettings: ActivitySettingsResult;
+  /** Direct URL to the course in Moodle: {moodleUrl}/course/view.php?id={courseId} */
+  courseUrl: string;
   passed: boolean;
 }
 
