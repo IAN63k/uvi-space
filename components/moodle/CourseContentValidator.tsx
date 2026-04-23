@@ -25,6 +25,8 @@ import {
   SlidersHorizontal,
   ClipboardCheck,
   HelpCircle,
+  Info,
+  Pencil,
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -37,6 +39,7 @@ import type {
   AssignActivityCheck,
   QuizActivityCheck,
   ForumActivityCheck,
+  ForumActivityInfo,
 } from "@/lib/moodle/types";
 
 // ── Check Row ─────────────────────────────────────────────────────────────────
@@ -447,11 +450,53 @@ function GradebookBody({
   );
 }
 
+// ── Forum Info Row ───────────────────────────────────────────────────────────
+
+function ForumInfoSection({ info }: { info: ForumActivityInfo }) {
+  const assessedLabel = info.assessed === 0 ? "Sin evaluación" : `Tipo de agregación: ${info.assessed}`;
+  const scaleLabel    = info.scale === 0 ? "Sin calificación" : info.scale > 0 ? `Puntuación máxima: ${info.scale}` : `Escala ID: ${Math.abs(info.scale)}`;
+  const availLabel    = info.availability ? "Con restricciones" : "Sin restricciones";
+
+  const items = [
+    { label: "Tipo de foro", value: info.forumType },
+    { label: "Evaluación del foro completo", value: assessedLabel },
+    { label: "Calificaciones", value: scaleLabel },
+    { label: "Disponibilidad", value: availLabel },
+  ];
+
+  return (
+    <div className="mt-1 border-t border-dashed border-border/50">
+      <div className="flex items-center gap-2 px-3.5 pt-2.5 pb-1">
+        <Info className="h-3 w-3 text-sky-500" />
+        <span className="text-[10px] font-semibold uppercase tracking-widest text-sky-600 dark:text-sky-400">
+          Información (no evaluada)
+        </span>
+      </div>
+      <div className="space-y-0.5 px-2 pb-2">
+        {items.map((item, idx) => (
+          <div
+            key={idx}
+            className="flex items-center gap-3 rounded-xl px-3.5 py-2 transition-colors hover:bg-muted/40"
+          >
+            <span className="shrink-0">
+              <Info className="h-4 w-4 text-sky-400/60" />
+            </span>
+            <span className="flex-1 text-sm font-medium leading-none text-muted-foreground">{item.label}</span>
+            <code className="rounded-md border border-sky-200 bg-sky-50 px-2 py-0.5 font-mono text-[11px] font-semibold text-sky-700 dark:border-sky-800/60 dark:bg-sky-950/40 dark:text-sky-300">
+              {item.value}
+            </code>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 // ── Activity List Body ────────────────────────────────────────────────────────
 
 type AnyActivityCheck = AssignActivityCheck | QuizActivityCheck | ForumActivityCheck;
 
-function ActivityListBody({ activities }: { activities: AnyActivityCheck[] }) {
+function ActivityListBody({ activities, moodleBaseUrl }: { activities: AnyActivityCheck[]; moodleBaseUrl: string }) {
   const [openItem, setOpenItem] = useState<number | null>(null);
 
   if (activities.length === 0) {
@@ -468,6 +513,8 @@ function ActivityListBody({ activities }: { activities: AnyActivityCheck[] }) {
         const checks = Object.values(activity.checks) as ValidationCheck[];
         const failCount = checks.filter((c) => !c.passed).length;
         const isOpen = openItem === activity.cmid;
+        const hasInfo = "info" in activity;
+        const editUrl = `${moodleBaseUrl}/course/modedit.php?update=${activity.cmid}`;
 
         return (
           <div key={activity.cmid}>
@@ -513,6 +560,25 @@ function ActivityListBody({ activities }: { activities: AnyActivityCheck[] }) {
                   {checks.map((check, idx) => (
                     <CheckRow key={idx} check={check} index={idx} />
                   ))}
+
+                  {/* Forum info section (non-validated) */}
+                  {hasInfo && <ForumInfoSection info={(activity as ForumActivityCheck).info} />}
+
+                  {/* Edit in Moodle link when there are failures */}
+                  {failCount > 0 && (
+                    <div className="mt-2 flex justify-end px-2 pb-1">
+                      <a
+                        href={editUrl}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="inline-flex items-center gap-1.5 rounded-lg border border-amber-200 bg-amber-50 px-3 py-1.5 text-xs font-semibold text-amber-700 shadow-sm transition-colors hover:bg-amber-100 dark:border-amber-800/60 dark:bg-amber-950/40 dark:text-amber-300 dark:hover:bg-amber-950/60"
+                      >
+                        <Pencil className="h-3 w-3" />
+                        Corregir en Moodle
+                        <ExternalLink className="h-3 w-3" />
+                      </a>
+                    </div>
+                  )}
                 </div>
               </div>
             </div>
@@ -678,6 +744,9 @@ export function CourseContentValidator({ result }: CourseContentValidatorProps) 
   const [openAccordion, setOpenAccordion] = useState<string | null>("page");
 
   const { professorPage, consultationForum, meeting, attendance, microcurriculum, blocks, sectionDates, gradebook, activitySettings } = result;
+
+  // Base URL for Moodle edit links (strip /course/view.php?id=...)
+  const moodleBaseUrl = result.courseUrl.replace(/\/course\/view\.php.*$/, "");
 
   // ── Derived check arrays ───────────────────────────────────────────────────
   const pageChecks            = Object.values(professorPage.checks) as ValidationCheck[];
@@ -928,7 +997,7 @@ export function CourseContentValidator({ result }: CourseContentValidatorProps) 
         <CategorySection
           icon={SlidersHorizontal}
           title="Ajustes de actividades"
-          subtitle="Tareas, cuestionarios y foros · puntuación, fechas, retroalimentación y finalización"
+          subtitle="Tareas, cuestionarios y foros · archivos, grupos, fechas, finalización y retroalimentación"
           passed={activitySettings.passed}
           passedCount={actividadesPassed}
           totalCount={actividadesTotal}
@@ -951,7 +1020,7 @@ export function CourseContentValidator({ result }: CourseContentValidatorProps) 
             onToggle={() => toggleAccordion("assigns")}
             notFoundLabel="No hay tareas (mod_assign) en este curso"
           >
-            <ActivityListBody activities={activitySettings.assignments} />
+            <ActivityListBody activities={activitySettings.assignments} moodleBaseUrl={moodleBaseUrl} />
           </AccordionItem>
 
           {/* ── Cuestionarios ── */}
@@ -969,7 +1038,7 @@ export function CourseContentValidator({ result }: CourseContentValidatorProps) 
             onToggle={() => toggleAccordion("quizzes")}
             notFoundLabel="No hay cuestionarios (mod_quiz) en este curso"
           >
-            <ActivityListBody activities={activitySettings.quizzes} />
+            <ActivityListBody activities={activitySettings.quizzes} moodleBaseUrl={moodleBaseUrl} />
           </AccordionItem>
 
           {/* ── Foros ── */}
@@ -987,7 +1056,7 @@ export function CourseContentValidator({ result }: CourseContentValidatorProps) 
             onToggle={() => toggleAccordion("act-forums")}
             notFoundLabel="No hay foros (mod_forum) en este curso"
           >
-            <ActivityListBody activities={activitySettings.forums} />
+            <ActivityListBody activities={activitySettings.forums} moodleBaseUrl={moodleBaseUrl} />
           </AccordionItem>
         </CategorySection>
 
