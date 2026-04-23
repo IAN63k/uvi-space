@@ -192,6 +192,18 @@ export interface CourseModuleDetail {
   idnumber: string;
   visible: number;
   visibleoncoursepage: number;
+  /** 0 = no groups, 1 = separate groups, 2 = visible groups */
+  groupmode?: number;
+  /** 0 = none, 1 = manual, 2 = automatic */
+  completion?: number;
+  /** 1 if "view activity" is required for completion */
+  completionview?: number;
+  /** Non-null when "receive a grade" is enabled for completion */
+  completiongradeitemnumber?: number | null;
+  /** 1 if passing grade is required for completion */
+  completionpassgrade?: number;
+  /** JSON-encoded access restriction rules, null if none */
+  availability?: string | null;
 }
 
 export interface MoodlePage {
@@ -424,12 +436,13 @@ export interface AssignActivityCheck {
 }
 
 export interface QuizActivityChecks {
-  grade: ValidationCheck;           // Puntuación máxima = 5
-  timeOpen: ValidationCheck;        // Sin fecha de apertura
-  timeClose: ValidationCheck;       // Sin fecha de cierre
-  completionPass: ValidationCheck;  // Finalización: debe aprobar
-  completionView: ValidationCheck;  // Finalización automática activada
-  gradePass: ValidationCheck;       // Calificación para aprobar: 3,0
+  timeOpen: ValidationCheck;           // Fecha de apertura ajustada
+  timeClose: ValidationCheck;          // Fecha de cierre ajustada
+  completionView: ValidationCheck;     // Finalización: Ver la actividad
+  completionGrade: ValidationCheck;    // Recibir una calificación: Cualquier calificación
+  accessRestrictions: ValidationCheck; // Restricciones de acceso: Ninguno
+  groupMode: ValidationCheck;          // Modo de grupo: No hay grupos
+  preferredBehaviour: ValidationCheck; // Comportamiento: retroalimentación diferida
 }
 
 export interface QuizActivityCheck {
@@ -440,15 +453,28 @@ export interface QuizActivityCheck {
 }
 
 export interface ForumActivityChecks {
-  scale: ValidationCheck;                 // Puntuación máxima = 5
-  completionDiscussions: ValidationCheck; // Finalización: mínimo 1 discusión
-  completionView: ValidationCheck;        // Finalización automática activada
+  maxFileSize: ValidationCheck;       // Tamaño máximo del archivo adjunto = 5 MB
+  maxAttachments: ValidationCheck;    // Máximo de archivos adjuntos = 3
+  groupMode: ValidationCheck;         // Modo de grupo: No hay grupos
+  completionView: ValidationCheck;    // Finalización: Ver la actividad
+}
+
+/** Non-validated info displayed for forums (informational only) */
+export interface ForumActivityInfo {
+  forumType: string;
+  /** 0 = no rating; otherwise an aggregate type */
+  assessed: number;
+  /** Positive = max points; negative = scale ID; 0 = no rating */
+  scale: number;
+  /** JSON-encoded access restriction rules, null if none */
+  availability: string | null;
 }
 
 export interface ForumActivityCheck {
   cmid: number;
   name: string;
   checks: ForumActivityChecks;
+  info: ForumActivityInfo;
   passed: boolean;
 }
 
