@@ -78,7 +78,7 @@ export const API_FUNCTIONS: ApiFunctionConfig[] = [
         label: "Fecha de finalización definida",
         description: "El curso debe tener una fecha de finalización configurada",
         activeByDefault: true,
-        defaultValue: true,
+        defaultValue: false,
         inputType: "boolean",
         validationType: "exists",
       },
