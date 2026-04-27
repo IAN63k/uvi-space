@@ -56,7 +56,11 @@ function formatBytes(bytes: number): string {
 
 function formatDate(timestamp: number): string {
   if (!timestamp) return "—";
-  return new Date(timestamp * 1000).toLocaleDateString("es-CO", { year: "numeric", month: "short", day: "numeric" });
+  const d = new Date(timestamp * 1000);
+  const dd = String(d.getDate()).padStart(2, "0");
+  const mm = String(d.getMonth() + 1).padStart(2, "0");
+  const yyyy = d.getFullYear();
+  return `${dd}-${mm}-${yyyy}`;
 }
 
 function formatSummaryFormat(v: number): string {
