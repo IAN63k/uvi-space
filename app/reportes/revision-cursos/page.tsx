@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   CheckCircle2, XCircle, ChevronRight, ChevronDown, Folder, BookOpen,
   X, Settings2, ExternalLink, AlertTriangle, Wrench, Check, Loader2,
+  ChevronLeft, Play, Zap,
 } from "lucide-react";
 
 import { ReportTableControls } from "@/components/report-table-controls";
@@ -509,7 +510,36 @@ function PieChart({ ok, fallos, total }: { ok: number; fallos: number; total: nu
 
 // ── Improved Bar Chart ────────────────────────────────────────────────────────
 
-function BarChart({ errorsByField, total }: { errorsByField: Record<string, number>; total: number }) {
+// ── Batch fix types ──────────────────────────────────────────────────────────
+
+type BatchFixStatus = {
+  field: string;
+  state: "idle" | "confirm" | "input" | "running" | "done";
+  progress: number;
+  total: number;
+  successCount: number;
+  failCount: number;
+  error?: string;
+  inputValue?: string;
+};
+
+function BarChart({
+  errorsByField,
+  total,
+  results,
+  rulesConfig,
+  moodleConfig,
+  onBatchFixDone,
+}: {
+  errorsByField: Record<string, number>;
+  total: number;
+  results: CourseValidationResult[];
+  rulesConfig: RulesConfig | null;
+  moodleConfig?: { moodleUrl: string; token: string };
+  onBatchFixDone: (field: string, updatedCourseIds: number[], apiField: string, newValue: string | number) => void;
+}) {
+  const [batchFix, setBatchFix] = useState<BatchFixStatus | null>(null);
+
   const entries = Object.entries(errorsByField).sort((a, b) => b[1] - a[1]);
   if (entries.length === 0) {
     return (
@@ -522,7 +552,6 @@ function BarChart({ errorsByField, total }: { errorsByField: Record<string, numb
 
   const max = Math.max(...entries.map(([, v]) => v));
 
-  // Color scale: from amber (few errors) to rose (many errors)
   const getBarColor = (count: number) => {
     const ratio = max > 0 ? count / max : 0;
     if (ratio >= 0.75) return "bg-rose-500";
@@ -539,11 +568,143 @@ function BarChart({ errorsByField, total }: { errorsByField: Record<string, numb
     return "bg-yellow-500/10";
   };
 
+  /** Get the fix config and expected value for a field */
+  const getFieldFixInfo = (field: string) => {
+    const fixCfg = FIELD_FIX_MAP[field];
+    if (!fixCfg) return null;
+    const ruleCfg = rulesConfig?.[field];
+    if (!ruleCfg) return null;
+    return { fixCfg, expected: ruleCfg.expected };
+  };
+
+  /** Convert YYYY-MM-DD to Unix timestamp at noon local */
+  const localDateStrToTs = (dateStr: string): number => {
+    const [y, m, d] = dateStr.split("-").map(Number);
+    return Math.floor(new Date(y, m - 1, d, 12, 0, 0).getTime() / 1000);
+  };
+
+  const handleBatchFix = (field: string) => {
+    const info = getFieldFixInfo(field);
+    if (!info) return;
+
+    const affectedCourses = results.filter((c) =>
+      c.errors.some((e) => e.field === field),
+    );
+
+    if (info.fixCfg.mode === "apply") {
+      // Boolean fields: go straight to confirm
+      setBatchFix({
+        field,
+        state: "confirm",
+        progress: 0,
+        total: affectedCourses.length,
+        successCount: 0,
+        failCount: 0,
+      });
+    } else {
+      // Need user input
+      const defaultVal =
+        info.fixCfg.mode === "date"
+          ? new Date().toISOString().slice(0, 10)
+          : String(info.expected);
+      setBatchFix({
+        field,
+        state: "input",
+        progress: 0,
+        total: affectedCourses.length,
+        successCount: 0,
+        failCount: 0,
+        inputValue: defaultVal,
+      });
+    }
+  };
+
+  const executeBatchFix = async (field: string, overrideValue?: string) => {
+    const info = getFieldFixInfo(field);
+    if (!info || !moodleConfig) return;
+
+    const affectedCourses = results.filter((c) =>
+      c.errors.some((e) => e.field === field),
+    );
+
+    let finalValue: string | number;
+    if (info.fixCfg.mode === "apply") {
+      const raw = info.expected;
+      finalValue = typeof raw === "boolean" ? (raw ? 1 : 0) : Number(raw);
+    } else if (info.fixCfg.mode === "date") {
+      finalValue = localDateStrToTs(overrideValue ?? new Date().toISOString().slice(0, 10));
+    } else if (info.fixCfg.mode === "number") {
+      finalValue = Number(overrideValue ?? info.expected);
+    } else {
+      finalValue = overrideValue ?? String(info.expected);
+    }
+
+    setBatchFix((prev) =>
+      prev ? { ...prev, state: "running", progress: 0, successCount: 0, failCount: 0 } : prev,
+    );
+
+    const courseUpdates = affectedCourses.map((c) => ({
+      courseId: c.id,
+      updates: { [info.fixCfg.apiField]: finalValue },
+    }));
+
+    try {
+      const res = await fetch("/api/moodle/update-courses-batch", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          moodleUrl: moodleConfig.moodleUrl,
+          token: moodleConfig.token,
+          courses: courseUpdates,
+        }),
+      });
+
+      const data = (await res.json()) as {
+        total: number;
+        success: number;
+        failed: number;
+        results: { courseId: number; success: boolean; error?: string }[];
+      };
+
+      if (!res.ok) throw new Error("Error al contactar la API batch");
+
+      const successIds = data.results
+        .filter((r) => r.success)
+        .map((r) => r.courseId);
+
+      setBatchFix((prev) =>
+        prev
+          ? {
+              ...prev,
+              state: "done",
+              progress: data.total,
+              successCount: data.success,
+              failCount: data.failed,
+            }
+          : prev,
+      );
+
+      if (successIds.length > 0) {
+        onBatchFixDone(field, successIds, info.fixCfg.apiField, finalValue);
+      }
+    } catch (err) {
+      setBatchFix((prev) =>
+        prev
+          ? { ...prev, state: "done", error: err instanceof Error ? err.message : "Error inesperado" }
+          : prev,
+      );
+    }
+  };
+
   return (
     <div className="space-y-2.5">
       {entries.map(([field, count]) => {
         const pct = total > 0 ? Math.round((count / total) * 100) : 0;
         const barWidth = max > 0 ? (count / max) * 100 : 0;
+        const fixInfo = getFieldFixInfo(field);
+        const canBatchFix = !!fixInfo && !!moodleConfig;
+        const isActive = batchFix?.field === field;
+
         return (
           <div key={field} className={`rounded-lg px-3 py-2 ${getBgColor(count)}`}>
             <div className="mb-1.5 flex items-center justify-between gap-2">
@@ -561,7 +722,129 @@ function BarChart({ errorsByField, total }: { errorsByField: Record<string, numb
                 style={{ width: `${barWidth}%` }}
               />
             </div>
-            <p className="mt-1 font-mono text-[10px] text-muted-foreground/70">{field}</p>
+            <div className="mt-1.5 flex items-center justify-between gap-2">
+              <p className="font-mono text-[10px] text-muted-foreground/70">{field}</p>
+              {canBatchFix && !isActive && (
+                <button
+                  type="button"
+                  onClick={() => handleBatchFix(field)}
+                  className="flex items-center gap-1 rounded border border-amber-300 bg-amber-50 px-2 py-0.5 text-[10px] font-medium text-amber-800 transition-colors hover:bg-amber-100 dark:border-amber-700/50 dark:bg-amber-950/20 dark:text-amber-400 dark:hover:bg-amber-950/40"
+                >
+                  <Zap className="h-2.5 w-2.5" />
+                  Corregir todo ({count})
+                </button>
+              )}
+            </div>
+
+            {/* ── Batch fix panel ── */}
+            {isActive && batchFix && (
+              <div className="mt-2 rounded-md border border-amber-200 bg-amber-50/80 px-3 py-2.5 dark:border-amber-800/40 dark:bg-amber-950/20">
+                {/* Confirm mode (for boolean/apply fields) */}
+                {batchFix.state === "confirm" && (
+                  <div className="space-y-2">
+                    <p className="text-[11px] text-amber-900 dark:text-amber-300">
+                      Se aplicará <span className="font-semibold">{formatValue(field, fixInfo!.expected)}</span> en{" "}
+                      <span className="font-bold">{batchFix.total}</span> curso{batchFix.total !== 1 ? "s" : ""}.
+                    </p>
+                    <div className="flex gap-1.5">
+                      <button
+                        type="button"
+                        onClick={() => void executeBatchFix(field)}
+                        className="flex items-center gap-1 rounded-md bg-amber-600 px-3 py-1 text-[11px] font-semibold text-white transition-colors hover:bg-amber-700"
+                      >
+                        <Zap className="h-3 w-3" />
+                        Confirmar corrección masiva
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setBatchFix(null)}
+                        className="rounded-md border border-amber-200 px-3 py-1 text-[11px] text-amber-800 transition-colors hover:bg-amber-100 dark:border-amber-800/40 dark:text-amber-400"
+                      >
+                        Cancelar
+                      </button>
+                    </div>
+                  </div>
+                )}
+
+                {/* Input mode (for text/number/date fields) */}
+                {batchFix.state === "input" && (
+                  <div className="space-y-2">
+                    <p className="text-[11px] text-amber-900 dark:text-amber-300">
+                      Valor a aplicar en <span className="font-bold">{batchFix.total}</span> curso{batchFix.total !== 1 ? "s" : ""}:
+                    </p>
+                    <input
+                      type={fixInfo!.fixCfg.mode === "date" ? "date" : fixInfo!.fixCfg.mode === "number" ? "number" : "text"}
+                      value={batchFix.inputValue ?? ""}
+                      onChange={(e) =>
+                        setBatchFix((prev) => (prev ? { ...prev, inputValue: e.target.value } : prev))
+                      }
+                      className="w-full max-w-xs rounded border border-amber-200 bg-white px-2 py-1 font-mono text-xs focus:outline-none focus:ring-1 focus:ring-amber-400 dark:border-amber-800/40 dark:bg-background"
+                    />
+                    <div className="flex gap-1.5">
+                      <button
+                        type="button"
+                        onClick={() => void executeBatchFix(field, batchFix.inputValue)}
+                        className="flex items-center gap-1 rounded-md bg-amber-600 px-3 py-1 text-[11px] font-semibold text-white transition-colors hover:bg-amber-700"
+                      >
+                        <Zap className="h-3 w-3" />
+                        Aplicar a {batchFix.total} curso{batchFix.total !== 1 ? "s" : ""}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setBatchFix(null)}
+                        className="rounded-md border border-amber-200 px-3 py-1 text-[11px] text-amber-800 transition-colors hover:bg-amber-100 dark:border-amber-800/40 dark:text-amber-400"
+                      >
+                        Cancelar
+                      </button>
+                    </div>
+                  </div>
+                )}
+
+                {/* Running state */}
+                {batchFix.state === "running" && (
+                  <div className="space-y-2">
+                    <div className="flex items-center gap-2">
+                      <Loader2 className="h-3.5 w-3.5 animate-spin text-amber-600" />
+                      <p className="text-[11px] font-medium text-amber-900 dark:text-amber-300">
+                        Aplicando correcciones en {batchFix.total} curso{batchFix.total !== 1 ? "s" : ""}…
+                      </p>
+                    </div>
+                    <div className="h-1.5 overflow-hidden rounded-full bg-amber-200/50 dark:bg-amber-900/30">
+                      <div className="h-full animate-pulse rounded-full bg-amber-500" style={{ width: "100%" }} />
+                    </div>
+                  </div>
+                )}
+
+                {/* Done state */}
+                {batchFix.state === "done" && (
+                  <div className="space-y-2">
+                    {batchFix.error ? (
+                      <div className="flex items-center gap-2">
+                        <XCircle className="h-3.5 w-3.5 shrink-0 text-rose-500" />
+                        <p className="text-[11px] text-rose-700 dark:text-rose-400">{batchFix.error}</p>
+                      </div>
+                    ) : (
+                      <div className="flex items-center gap-2">
+                        <CheckCircle2 className="h-3.5 w-3.5 shrink-0 text-emerald-500" />
+                        <p className="text-[11px] text-emerald-800 dark:text-emerald-300">
+                          {batchFix.successCount} corregido{batchFix.successCount !== 1 ? "s" : ""}
+                          {batchFix.failCount > 0 && (
+                            <span className="text-rose-600"> · {batchFix.failCount} fallido{batchFix.failCount !== 1 ? "s" : ""}</span>
+                          )}
+                        </p>
+                      </div>
+                    )}
+                    <button
+                      type="button"
+                      onClick={() => setBatchFix(null)}
+                      className="rounded-md border border-amber-200 px-3 py-1 text-[11px] text-amber-800 transition-colors hover:bg-amber-100 dark:border-amber-800/40 dark:text-amber-400"
+                    >
+                      Cerrar
+                    </button>
+                  </div>
+                )}
+              </div>
+            )}
           </div>
         );
       })}
@@ -701,11 +984,20 @@ function CourseDetailSidebar({
   onClose,
   moodleConfig,
   onFixSuccess,
+  autoReview,
 }: {
   course: CourseValidationResult | null;
   onClose: () => void;
   moodleConfig?: { moodleUrl: string; token: string };
   onFixSuccess?: (courseId: number, apiField: string, newValue: string | number) => void;
+  autoReview?: {
+    active: boolean;
+    index: number;
+    total: number;
+    onPrev: () => void;
+    onNext: () => void;
+    onStop: () => void;
+  };
 }) {
   const open = course !== null;
 
@@ -776,6 +1068,35 @@ function CourseDetailSidebar({
                 )}
               </div>
             </div>
+
+            {/* Auto-review navigation bar */}
+            {autoReview?.active && autoReview.index >= 0 && (
+              <div className="flex items-center justify-between border-b bg-muted/30 px-4 py-2">
+                <button
+                  type="button"
+                  onClick={autoReview.onPrev}
+                  disabled={autoReview.index <= 0}
+                  className="flex items-center gap-1 rounded-md border px-2 py-1 text-xs font-medium transition-colors hover:bg-accent disabled:opacity-30"
+                >
+                  <ChevronLeft className="h-3 w-3" />
+                  Anterior
+                </button>
+                <span className="text-xs text-muted-foreground">
+                  <span className="font-semibold text-foreground">{autoReview.index + 1}</span>
+                  {" / "}
+                  {autoReview.total} con errores
+                </span>
+                <button
+                  type="button"
+                  onClick={autoReview.onNext}
+                  disabled={autoReview.index >= autoReview.total - 1}
+                  className="flex items-center gap-1 rounded-md border px-2 py-1 text-xs font-medium transition-colors hover:bg-accent disabled:opacity-30"
+                >
+                  Siguiente
+                  <ChevronRight className="h-3 w-3" />
+                </button>
+              </div>
+            )}
 
             {/* Scrollable body */}
             <div className="flex-1 overflow-y-auto px-5 py-5 space-y-5">
@@ -965,11 +1286,79 @@ export default function RevisionCursosPage() {
           }),
         );
 
-        return { ...prev, results: newResults, ok: newOk, fallos: newFallos, errorsByField: newErrorsByField };
+        // Build a lookup map from updated results so the tree can be synced
+        const resultMap = new Map<number, CourseValidationResult>();
+        for (const r of newResults) resultMap.set(r.id, r);
+
+        // Recursively sync every CourseSummary inside the category tree
+        const syncTree = (nodes: CategoryNode[]): CategoryNode[] =>
+          nodes.map((node) => ({
+            ...node,
+            courses: node.courses.map((cs) => {
+              const updated = resultMap.get(cs.id);
+              if (!updated) return cs;
+              return {
+                ...cs,
+                status: updated.status,
+                errorCount: updated.errors.length,
+                fullname: updated.fullname,
+                shortname: updated.shortname,
+                idnumber: updated.idnumber,
+              };
+            }),
+            children: syncTree(node.children),
+          }));
+
+        const newCategoryTree = syncTree(prev.categoryTree);
+
+        return { ...prev, results: newResults, ok: newOk, fallos: newFallos, errorsByField: newErrorsByField, categoryTree: newCategoryTree };
       });
     },
     [],
   );
+
+  const handleBatchFixDone = useCallback(
+    (field: string, updatedCourseIds: number[], apiField: string, newValue: string | number) => {
+      for (const courseId of updatedCourseIds) {
+        handleFixSuccess(courseId, apiField, newValue);
+      }
+    },
+    [handleFixSuccess],
+  );
+
+  // ── Auto-review navigation ──────────────────────────────────────────────────
+
+  const [autoReviewActive, setAutoReviewActive] = useState(false);
+
+  const failedCourseIds = useMemo(
+    () => (payload?.results ?? []).filter((r) => r.status === "FAIL").map((r) => r.id),
+    [payload?.results],
+  );
+
+  const autoReviewIndex = useMemo(() => {
+    if (!autoReviewActive || selectedCourseId === null) return -1;
+    return failedCourseIds.indexOf(selectedCourseId);
+  }, [autoReviewActive, selectedCourseId, failedCourseIds]);
+
+  const startAutoReview = useCallback(() => {
+    if (failedCourseIds.length === 0) return;
+    setAutoReviewActive(true);
+    setSelectedCourseId(failedCourseIds[0]);
+  }, [failedCourseIds]);
+
+  const goToNextFailed = useCallback(() => {
+    if (autoReviewIndex < 0 || autoReviewIndex >= failedCourseIds.length - 1) return;
+    setSelectedCourseId(failedCourseIds[autoReviewIndex + 1]);
+  }, [autoReviewIndex, failedCourseIds]);
+
+  const goToPrevFailed = useCallback(() => {
+    if (autoReviewIndex <= 0) return;
+    setSelectedCourseId(failedCourseIds[autoReviewIndex - 1]);
+  }, [autoReviewIndex, failedCourseIds]);
+
+  const stopAutoReview = useCallback(() => {
+    setAutoReviewActive(false);
+  }, []);
 
   const filteredResults = useMemo(() => {
     const results = payload?.results ?? [];
@@ -1203,8 +1592,20 @@ export default function RevisionCursosPage() {
                   {payload.total} cursos · {payload.ok} OK · {payload.fallos} con errores
                 </CardTitle>
               </CardHeader>
-              <CardContent className="pt-2">
+              <CardContent className="space-y-3 pt-2">
                 <PieChart ok={payload.ok} fallos={payload.fallos} total={payload.total} />
+                {payload.fallos > 0 && (
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={startAutoReview}
+                    className="w-full"
+                  >
+                    <Play className="mr-1.5 h-3.5 w-3.5" />
+                    Iniciar revisión 1 a 1 ({payload.fallos} curso{payload.fallos !== 1 ? "s" : ""})
+                  </Button>
+                )}
               </CardContent>
             </Card>
 
@@ -1216,7 +1617,14 @@ export default function RevisionCursosPage() {
                 </CardTitle>
               </CardHeader>
               <CardContent className="pt-2">
-                <BarChart errorsByField={payload.errorsByField} total={payload.total} />
+                <BarChart
+                  errorsByField={payload.errorsByField}
+                  total={payload.total}
+                  results={payload.results}
+                  rulesConfig={rulesConfig}
+                  moodleConfig={moodleConfig ?? undefined}
+                  onBatchFixDone={handleBatchFixDone}
+                />
               </CardContent>
             </Card>
           </div>
@@ -1411,9 +1819,20 @@ export default function RevisionCursosPage() {
       {/* ── Course Detail Sidebar ── */}
       <CourseDetailSidebar
         course={selectedCourse ?? null}
-        onClose={() => setSelectedCourseId(null)}
+        onClose={() => {
+          setSelectedCourseId(null);
+          stopAutoReview();
+        }}
         moodleConfig={moodleConfig ?? undefined}
         onFixSuccess={handleFixSuccess}
+        autoReview={{
+          active: autoReviewActive,
+          index: autoReviewIndex,
+          total: failedCourseIds.length,
+          onPrev: goToPrevFailed,
+          onNext: goToNextFailed,
+          onStop: stopAutoReview,
+        }}
       />
 
       {/* ── Settings Sidebar ── */}
