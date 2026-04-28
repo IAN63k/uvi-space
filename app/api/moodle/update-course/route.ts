@@ -55,8 +55,75 @@ export async function POST(request: Request) {
     params.append("moodlewsrestformat", "json");
     params.append("courses[0][id]", String(courseId));
 
+    // Normalizar valores antes de enviarlos a Moodle: convertir fechas YYYY-MM-DD -> timestamp (segundos)
+    // y asegurar que campos numéricos se envíen como enteros.
+    const processedUpdates: Record<string, string | number> = {};
+    const numericFields = new Set([
+      "enddate",
+      "startdate",
+      "maxbytes",
+      "newsitems",
+      "groupmode",
+      "summaryformat",
+      "showgrades",
+      "showreports",
+      "enablecompletion",
+      "visible",
+      "groupmodeforce",
+      "completionnotify",
+    ]);
+
     for (const [field, value] of Object.entries(updates)) {
-      params.append(`courses[0][${field}]`, String(value));
+      let out: string | number = value as string | number;
+
+      try {
+        // Detectar formato YYYY-MM-DD (usado por inputs de tipo date)
+        if (typeof value === "string" && /^\d{4}-\d{2}-\d{2}$/.test(value)) {
+          const [y, m, d] = value.split("-").map(Number);
+          out = Math.floor(new Date(y, m - 1, d, 12, 0, 0).getTime() / 1000);
+        } else if (numericFields.has(field) || (typeof value === "string" && /^\d+$/.test(value))) {
+          out = Number(value);
+        }
+      } catch (e) {
+        out = value as string | number;
+      }
+
+      processedUpdates[field] = out;
+      params.append(`courses[0][${field}]`, String(out));
+    }
+
+    // Si se intenta establecer enddate y no se envió startdate, obtener el startdate actual del curso
+    // y enviarlo explícitamente (algunas instalaciones de Moodle requieren que se incluya).
+    if (processedUpdates["enddate"] && processedUpdates["startdate"] === undefined) {
+      try {
+        const lookupParams = new URLSearchParams();
+        lookupParams.append("wstoken", token.trim());
+        lookupParams.append("wsfunction", "core_course_get_courses_by_field");
+        lookupParams.append("moodlewsrestformat", "json");
+        lookupParams.append("field", "id");
+        lookupParams.append("value", String(courseId));
+
+        const lookupUrl = `${moodleUrl.trim().replace(/\/+$/, "")}/webservice/rest/server.php`;
+        const lookupRes = await fetch(lookupUrl, {
+          method: "POST",
+          headers: { "Content-Type": "application/x-www-form-urlencoded" },
+          body: lookupParams.toString(),
+        });
+        if (lookupRes.ok) {
+          const lookupData = await lookupRes.json();
+          // core_course_get_courses_by_field normalmente devuelve { courses: [...] }
+          const foundCourse = (lookupData && (lookupData.courses ? lookupData.courses[0] : lookupData[0])) as any;
+          const existingStart = foundCourse?.startdate ?? foundCourse?.start ?? 0;
+          if (existingStart && Number(existingStart) > 0) {
+            const startVal = Number(existingStart);
+            // Añadir al params y processedUpdates
+            processedUpdates["startdate"] = startVal;
+            params.append(`courses[0][startdate]`, String(startVal));
+          }
+        }
+      } catch (e) {
+        // No bloquear la operación por fallos en la consulta de lookup; seguiremos con la petición original.
+      }
     }
 
     const url = `${moodleUrl.trim().replace(/\/+$/, "")}/webservice/rest/server.php`;
@@ -83,7 +150,7 @@ export async function POST(request: Request) {
       );
     }
 
-    return NextResponse.json({ success: true, warnings: data.warnings ?? [] });
+    return NextResponse.json({ success: true, warnings: data.warnings ?? [], sentUpdates: processedUpdates });
   } catch (err) {
     const message =
       err instanceof Error ? err.message : "Error inesperado al contactar la API de Moodle";
