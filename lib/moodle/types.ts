@@ -559,3 +559,79 @@ export interface BatchValidationResult {
   results: CourseContentValidationResult[];
   executionTimeMs: number;
 }
+
+// ── Enrolment (matrículas) types ──────────────────────────────────────────────
+
+/** Campo por el que se puede buscar un usuario en core_user_get_users_by_field */
+export type UserSearchField = "idnumber" | "username" | "email" | "fullname";
+
+/** Shape devuelto por core_user_get_users_by_field */
+export interface MoodleUser {
+  id: number;
+  username: string;
+  firstname: string;
+  lastname: string;
+  fullname: string;
+  email: string;
+  idnumber?: string;
+  /** URL pública de la foto de perfil */
+  profileimageurl?: string;
+  profileimageurlsmall?: string;
+}
+
+/** Curso devuelto por core_enrol_get_users_courses (shape reducido) */
+export interface MoodleUserCourse {
+  id: number;
+  shortname: string;
+  fullname: string;
+  idnumber?: string;
+  visible?: number;
+}
+
+/** Resultado de la búsqueda de usuario para el panel de matrículas */
+export interface UserSearchResponse {
+  found: boolean;
+  user?: MoodleUser;
+  /** Cantidad de cursos en los que el usuario ya está matriculado */
+  enrolledCount?: number;
+  /** Criterio usado, para mostrar mensajes claros cuando no hay resultados */
+  field: UserSearchField;
+  value: string;
+  message?: string;
+}
+
+/** Estado de verificación de un ID de curso ingresado manualmente */
+export interface CourseVerificationResult {
+  courseId: number;
+  found: boolean;
+  fullname?: string;
+  shortname?: string;
+  error?: string;
+}
+
+/** Una matrícula individual para enrol_manual_enrol_users */
+export interface EnrolmentData {
+  roleid: number;
+  userid: number;
+  courseid: number;
+  /** timestamp unix; 0 = sin límite */
+  timestart?: number;
+  /** timestamp unix; 0 = sin límite */
+  timeend?: number;
+  /** 0 = activo, 1 = suspendido */
+  suspend?: number;
+}
+
+/** Una desmatrícula individual para enrol_manual_unenrol_users */
+export interface UnenrolmentData {
+  userid: number;
+  courseid: number;
+}
+
+/** Resultado por curso de una operación de (des)matrícula */
+export interface EnrolmentResult {
+  courseId: number;
+  courseName: string;
+  success: boolean;
+  error?: string;
+}
