@@ -45,6 +45,10 @@ const reportNavItems: NavItem[] = [
   { label: "Institucionales", href: "/reportes/institucionales", shortLabel: "IT" },
 ];
 
+const managementNavItems: NavItem[] = [
+  { label: "Matrículas", href: "/gestion/matriculas", shortLabel: "MT" },
+];
+
 const adminNavItems: NavItem[] = [
   { label: "Configuración BD", href: "/configuracion/bd", shortLabel: "BD" },
   { label: "Consola SQL", href: "/utilidades/sql-console", shortLabel: "SQL" },
@@ -277,6 +281,24 @@ function SidebarContent({
         ) : null}
         <ul className="space-y-0.5">
           {reportNavItems.map((item) => (
+            <li key={item.href ?? item.label}>
+              <NavLink item={item} collapsed={collapsed} onLinkClick={onLinkClick} />
+            </li>
+          ))}
+        </ul>
+      </nav>
+
+      <div className="my-3 mx-3 h-px bg-sidebar-border" />
+
+      {/* Gestión */}
+      <nav className="px-2">
+        {!collapsed ? (
+          <p className="mb-1 px-3 text-[10px] font-semibold uppercase tracking-widest text-sidebar-foreground/40">
+            Gestión
+          </p>
+        ) : null}
+        <ul className="space-y-0.5">
+          {managementNavItems.map((item) => (
             <li key={item.href ?? item.label}>
               <NavLink item={item} collapsed={collapsed} onLinkClick={onLinkClick} />
             </li>

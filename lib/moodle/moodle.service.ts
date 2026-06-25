@@ -1,6 +1,6 @@
 import https from "node:https";
 import axios from "axios";
-import type { MoodleCategory, MoodleCourse, MoodleEnrolledUser, MoodleForumDiscussion, ValidationRules, CourseError, CourseValidationResult, CategoryNode, CourseSummary, CourseSection, CourseModuleDetail, MoodlePage, MoodleForum, MoodleBlock, GradeTreeNode, GradeItem, MoodleAssignment, MoodleQuiz } from "./types";
+import type { MoodleCategory, MoodleCourse, MoodleEnrolledUser, MoodleForumDiscussion, ValidationRules, CourseError, CourseValidationResult, CategoryNode, CourseSummary, CourseSection, CourseModuleDetail, MoodlePage, MoodleForum, MoodleBlock, GradeTreeNode, GradeItem, MoodleAssignment, MoodleQuiz, MoodleUser, MoodleUserCourse, UserSearchField, EnrolmentData, UnenrolmentData } from "./types";
 
 // Axios instance with a custom HTTPS agent that:
 // - Disables strict SSL verification (handles self-signed / intermediate certs common in .edu environments)
@@ -32,6 +32,40 @@ async function apiCall<T>({ moodleUrl, token, wsfunction, extraParams = {} }: Ap
       wsfunction,
       ...extraParams,
     },
+  });
+
+  if (data && typeof data === "object" && "exception" in data) {
+    const err = data as { message?: string; errorcode?: string; debuginfo?: string };
+    const detail = err.debuginfo ? ` (${err.debuginfo})` : "";
+    throw new Error((err.message ?? err.errorcode ?? `Error en ${wsfunction}`) + detail);
+  }
+
+  return data;
+}
+
+type ApiPostParams = {
+  moodleUrl: string;
+  token: string;
+  wsfunction: string;
+  params?: Record<string, string | number>;
+};
+
+/** Variante POST (form-urlencoded) de apiCall para operaciones de escritura
+ *  como enrol_manual_enrol_users, que reciben arrays y no deben ir en la URL. */
+async function apiCallPost<T>({ moodleUrl, token, wsfunction, params = {} }: ApiPostParams): Promise<T> {
+  const base = moodleUrl.replace(/\/$/, "");
+  const url = `${base}/webservice/rest/server.php`;
+
+  const body = new URLSearchParams();
+  body.append("wstoken", token);
+  body.append("moodlewsrestformat", "json");
+  body.append("wsfunction", wsfunction);
+  for (const [key, value] of Object.entries(params)) {
+    body.append(key, String(value));
+  }
+
+  const { data } = await moodleClient.post<T>(url, body.toString(), {
+    headers: { "Content-Type": "application/x-www-form-urlencoded" },
   });
 
   if (data && typeof data === "object" && "exception" in data) {
@@ -620,4 +654,125 @@ export async function getQuizzesByCourse(
     extraParams: { "courseids[0]": courseId },
   });
   return data.quizzes ?? [];
+}
+
+// ── Enrolment (matrículas) endpoints ──────────────────────────────────────────
+
+/** Busca usuarios por un campo soportado por core_user_get_users_by_field.
+ *  Nota: esta función web SOLO admite id, idnumber, username y email
+ *  (NO admite fullname). Para nombre completo usar searchUsersByFullname. */
+export async function getUserByField(
+  moodleUrl: string,
+  token: string,
+  field: Exclude<UserSearchField, "fullname">,
+  value: string,
+): Promise<MoodleUser[]> {
+  const data = await apiCall<MoodleUser[]>({
+    moodleUrl,
+    token,
+    wsfunction: "core_user_get_users_by_field",
+    extraParams: { field, "values[0]": value },
+  });
+  return Array.isArray(data) ? data : [];
+}
+
+/** Busca usuarios por nombre completo usando core_user_get_users (búsqueda parcial).
+ *  - Con 2+ palabras: firstname = primera palabra AND lastname = última (AND, parcial).
+ *  - Con 1 palabra: busca esa palabra en firstname o lastname y combina resultados. */
+export async function searchUsersByFullname(
+  moodleUrl: string,
+  token: string,
+  value: string,
+): Promise<MoodleUser[]> {
+  const runCriteria = async (criteria: Record<string, string>): Promise<MoodleUser[]> => {
+    const extraParams: Record<string, string | number> = {};
+    Object.entries(criteria).forEach(([key, val], i) => {
+      extraParams[`criteria[${i}][key]`] = key;
+      extraParams[`criteria[${i}][value]`] = val;
+    });
+    const data = await apiCall<{ users?: MoodleUser[] }>({
+      moodleUrl,
+      token,
+      wsfunction: "core_user_get_users",
+      extraParams,
+    });
+    return data.users ?? [];
+  };
+
+  const tokens = value.trim().split(/\s+/).filter(Boolean);
+
+  if (tokens.length >= 2) {
+    return runCriteria({ firstname: tokens[0], lastname: tokens[tokens.length - 1] });
+  }
+
+  const term = tokens[0] ?? value.trim();
+  const [byFirst, byLast] = await Promise.all([
+    runCriteria({ firstname: term }),
+    runCriteria({ lastname: term }),
+  ]);
+
+  const merged = new Map<number, MoodleUser>();
+  for (const u of [...byFirst, ...byLast]) merged.set(u.id, u);
+  return Array.from(merged.values());
+}
+
+/** Devuelve los cursos en los que un usuario está matriculado. */
+export async function getUserCourses(
+  moodleUrl: string,
+  token: string,
+  userId: number,
+): Promise<MoodleUserCourse[]> {
+  const data = await apiCall<MoodleUserCourse[]>({
+    moodleUrl,
+    token,
+    wsfunction: "core_enrol_get_users_courses",
+    extraParams: { userid: userId },
+  });
+  return Array.isArray(data) ? data : [];
+}
+
+/** Matricula uno o varios usuarios usando enrol_manual_enrol_users.
+ *  La llamada es atómica en Moodle: si una matrícula falla, lanza excepción
+ *  y ninguna del lote se aplica. El caller decide la estrategia de reintento. */
+export async function enrolUsers(
+  moodleUrl: string,
+  token: string,
+  enrolments: EnrolmentData[],
+): Promise<void> {
+  const params: Record<string, string | number> = {};
+  enrolments.forEach((e, i) => {
+    params[`enrolments[${i}][roleid]`] = e.roleid;
+    params[`enrolments[${i}][userid]`] = e.userid;
+    params[`enrolments[${i}][courseid]`] = e.courseid;
+    if (e.timestart !== undefined) params[`enrolments[${i}][timestart]`] = e.timestart;
+    if (e.timeend !== undefined) params[`enrolments[${i}][timeend]`] = e.timeend;
+    if (e.suspend !== undefined) params[`enrolments[${i}][suspend]`] = e.suspend;
+  });
+
+  await apiCallPost<unknown>({
+    moodleUrl,
+    token,
+    wsfunction: "enrol_manual_enrol_users",
+    params,
+  });
+}
+
+/** Desmatricula uno o varios usuarios usando enrol_manual_unenrol_users. */
+export async function unenrolUsers(
+  moodleUrl: string,
+  token: string,
+  enrolments: UnenrolmentData[],
+): Promise<void> {
+  const params: Record<string, string | number> = {};
+  enrolments.forEach((e, i) => {
+    params[`enrolments[${i}][userid]`] = e.userid;
+    params[`enrolments[${i}][courseid]`] = e.courseid;
+  });
+
+  await apiCallPost<unknown>({
+    moodleUrl,
+    token,
+    wsfunction: "enrol_manual_unenrol_users",
+    params,
+  });
 }
