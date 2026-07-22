@@ -1,9 +1,41 @@
-/** Convierte YYYY-MM-DD a timestamp unix (mediodía local) o undefined si está vacío */
-export function dateToTimestamp(value: string): number | undefined {
+/** Convierte YYYY-MM-DD a timestamp unix, o undefined si está vacío.
+ *
+ *  El extremo importa: Moodle marca la matrícula como "No activo" fuera de la
+ *  ventana [timestart, timeend]. Por eso el inicio va al primer segundo del día
+ *  y el fin al último, de modo que ambas fechas queden incluidas completas. */
+export function dateToTimestamp(value: string, boundary: "start" | "end"): number | undefined {
   if (!value) return undefined;
   const [y, m, d] = value.split("-").map(Number);
   if (!y || !m || !d) return undefined;
-  return Math.floor(new Date(y, m - 1, d, 12, 0, 0).getTime() / 1000);
+  const date =
+    boundary === "start"
+      ? new Date(y, m - 1, d, 0, 0, 0)
+      : new Date(y, m - 1, d, 23, 59, 59);
+  return Math.floor(date.getTime() / 1000);
+}
+
+/** Advertencia sobre las fechas elegidas, o null si no hay nada que advertir.
+ *  Evita la sorpresa de matricular y encontrar a todos como "No activo". */
+export function enrolmentDateWarning(timestart: string, timeend: string): string | null {
+  const start = dateToTimestamp(timestart, "start");
+  const end = dateToTimestamp(timeend, "end");
+  const now = Math.floor(Date.now() / 1000);
+
+  if (start && end && end < start) {
+    return "La fecha de fin es anterior a la de inicio.";
+  }
+  if (end && end < now) {
+    return "La fecha de fin ya pasó: los usuarios quedarán como «No activo» en Moodle de inmediato.";
+  }
+  if (start && start > now) {
+    const formatted = new Date(start * 1000).toLocaleDateString("es-CO", {
+      day: "numeric",
+      month: "long",
+      year: "numeric",
+    });
+    return `Los usuarios quedarán como «No activo» en Moodle hasta el ${formatted}. Deja la fecha vacía si quieres que la matrícula sea efectiva de inmediato.`;
+  }
+  return null;
 }
 
 /** Divide un arreglo en lotes de tamaño fijo */
