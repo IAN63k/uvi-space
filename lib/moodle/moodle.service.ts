@@ -1,6 +1,6 @@
 import https from "node:https";
 import axios from "axios";
-import type { MoodleCategory, MoodleCourse, MoodleEnrolledUser, ValidationRules, CourseError, CourseValidationResult, CategoryNode, CourseSummary, CourseSection, CourseModuleDetail, MoodlePage, MoodleForum, MoodleBlock, GradeTreeNode, GradeItem, MoodleAssignment, MoodleQuiz, MoodleUser, MoodleUserCourse, UserSearchField, EnrolmentData, UnenrolmentData } from "./types";
+import type { MoodleCategory, MoodleCourse, MoodleEnrolledUser, ValidationRules, CourseError, CourseValidationResult, CategoryNode, CourseSummary, CourseSection, CourseModuleDetail, MoodlePage, MoodleForum, MoodleBlock, GradeTreeNode, GradeItem, MoodleAssignment, MoodleQuiz, MoodleUser, MoodleUserCourse, UserSearchField, BulkUserField, EnrolmentData, UnenrolmentData } from "./types";
 
 // Axios instance with a custom HTTPS agent that:
 // - Disables strict SSL verification (handles self-signed / intermediate certs common in .edu environments)
@@ -606,6 +606,73 @@ export async function getUserByField(
     extraParams: { field, "values[0]": value },
   });
   return Array.isArray(data) ? data : [];
+}
+
+/** Máximo de valores por llamada a core_user_get_users_by_field.
+ *  apiCall usa GET, así que hay que acotar el largo de la URL. */
+const BULK_USER_CHUNK = 50;
+
+/** Normaliza un identificador para comparar entrada del usuario contra Moodle. */
+export function normalizeUserKey(value: string): string {
+  return value.trim().toLowerCase();
+}
+
+function userFieldValue(user: MoodleUser, field: BulkUserField): string {
+  if (field === "idnumber") return user.idnumber ?? "";
+  if (field === "username") return user.username;
+  return user.email;
+}
+
+export interface BulkUserLookup {
+  /** Usuarios indexados por el valor del campo, normalizado */
+  byKey: Map<string, MoodleUser[]>;
+  /** Usuarios devueltos por Moodle que no traían el campo consultado.
+   *  Sucede cuando el token no puede ver ese dato (típico con idnumber):
+   *  sin él no hay forma de emparejarlos con la lista ingresada. */
+  unindexed: number;
+}
+
+/** Resuelve muchos usuarios a la vez por idnumber, username o email.
+ *  core_user_get_users_by_field admite values[0..n], pero no garantiza el orden
+ *  ni devuelve los valores sin coincidencia: por eso el resultado se indexa por
+ *  el valor del campo normalizado. Un mismo valor puede devolver más de un
+ *  usuario (idnumbers duplicados), así que el mapa guarda listas. */
+export async function getUsersByFieldMany(
+  moodleUrl: string,
+  token: string,
+  field: BulkUserField,
+  values: string[],
+): Promise<BulkUserLookup> {
+  const byKey = new Map<string, MoodleUser[]>();
+  let unindexed = 0;
+
+  for (let i = 0; i < values.length; i += BULK_USER_CHUNK) {
+    const slice = values.slice(i, i + BULK_USER_CHUNK);
+    const extraParams: Record<string, string | number> = { field };
+    slice.forEach((value, index) => {
+      extraParams[`values[${index}]`] = value;
+    });
+
+    const data = await apiCall<MoodleUser[]>({
+      moodleUrl,
+      token,
+      wsfunction: "core_user_get_users_by_field",
+      extraParams,
+    });
+
+    for (const user of Array.isArray(data) ? data : []) {
+      const key = normalizeUserKey(userFieldValue(user, field));
+      if (!key) {
+        unindexed += 1;
+        continue;
+      }
+      const existing = byKey.get(key);
+      if (existing) existing.push(user);
+      else byKey.set(key, [user]);
+    }
+  }
+
+  return { byKey, unindexed };
 }
 
 /** Busca usuarios por nombre completo usando core_user_get_users (búsqueda parcial).

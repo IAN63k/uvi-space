@@ -12,14 +12,18 @@ import {
 } from "@/lib/matriculas/api";
 import type { MoodleConfig } from "@/lib/encrypted-local-storage";
 
+/** "multi" = casillas y "seleccionar todos"; "single" = radios, un solo curso */
+export type TreeSelectionMode = "multi" | "single";
+
 interface CategoryTreeSelectorProps {
   config: MoodleConfig | null;
   selectedIds: Set<number>;
   onToggle: (course: SelectedCourse, checked: boolean) => void;
   onToggleMany: (courses: SelectedCourse[], checked: boolean) => void;
+  selection?: TreeSelectionMode;
 }
 
-export function CategoryTreeSelector({ config, selectedIds, onToggle, onToggleMany }: CategoryTreeSelectorProps) {
+export function CategoryTreeSelector({ config, selectedIds, onToggle, onToggleMany, selection = "multi" }: CategoryTreeSelectorProps) {
   const [roots, setRoots] = useState<CategoryItem[]>([]);
   const [rootId, setRootId] = useState<string>("");
   const [loadingRoots, setLoadingRoots] = useState(false);
@@ -74,6 +78,7 @@ export function CategoryTreeSelector({ config, selectedIds, onToggle, onToggleMa
             selectedIds={selectedIds}
             onToggle={onToggle}
             onToggleMany={onToggleMany}
+            selection={selection}
           />
         </div>
       )}
@@ -89,9 +94,13 @@ interface TreeNodeProps {
   selectedIds: Set<number>;
   onToggle: (course: SelectedCourse, checked: boolean) => void;
   onToggleMany: (courses: SelectedCourse[], checked: boolean) => void;
+  selection: TreeSelectionMode;
 }
 
-function TreeNode({ config, category, depth, defaultExpanded, selectedIds, onToggle, onToggleMany }: TreeNodeProps) {
+/** Agrupa los radios de todo el árbol cuando la selección es única */
+const SINGLE_SELECT_GROUP = "matriculas-curso-destino";
+
+function TreeNode({ config, category, depth, defaultExpanded, selectedIds, onToggle, onToggleMany, selection }: TreeNodeProps) {
   const [expanded, setExpanded] = useState(!!defaultExpanded);
   const [subcategories, setSubcategories] = useState<CategoryItem[] | null>(null);
   const [courses, setCourses] = useState<SelectedCourse[] | null>(null);
@@ -122,6 +131,7 @@ function TreeNode({ config, category, depth, defaultExpanded, selectedIds, onTog
   }, [expanded, subcategories, loading, load]);
 
   const selectableCourses = courses ?? [];
+  const isSingle = selection === "single";
   const allSelected = selectableCourses.length > 0 && selectableCourses.every((c) => selectedIds.has(c.id));
 
   return (
@@ -156,6 +166,7 @@ function TreeNode({ config, category, depth, defaultExpanded, selectedIds, onTog
               selectedIds={selectedIds}
               onToggle={onToggle}
               onToggleMany={onToggleMany}
+              selection={selection}
             />
           ))}
 
@@ -166,25 +177,28 @@ function TreeNode({ config, category, depth, defaultExpanded, selectedIds, onTog
                 !loading && <p className="px-2 py-1 text-xs text-muted-foreground">Sin cursos en esta categoría.</p>
               ) : (
                 <>
-                  <label className="flex cursor-pointer items-center gap-2 rounded px-1.5 py-1 text-xs text-muted-foreground hover:bg-accent">
-                    <input
-                      type="checkbox"
-                      checked={allSelected}
-                      onChange={(e) => onToggleMany(selectableCourses, e.target.checked)}
-                      className="h-3.5 w-3.5 rounded border-input accent-primary"
-                    />
-                    Seleccionar todos ({selectableCourses.length})
-                  </label>
+                  {!isSingle && (
+                    <label className="flex cursor-pointer items-center gap-2 rounded px-1.5 py-1 text-xs text-muted-foreground hover:bg-accent">
+                      <input
+                        type="checkbox"
+                        checked={allSelected}
+                        onChange={(e) => onToggleMany(selectableCourses, e.target.checked)}
+                        className="h-3.5 w-3.5 rounded border-input accent-primary"
+                      />
+                      Seleccionar todos ({selectableCourses.length})
+                    </label>
+                  )}
                   {selectableCourses.map((course) => (
                     <label
                       key={course.id}
                       className="flex cursor-pointer items-center gap-2 rounded px-1.5 py-1 text-sm hover:bg-accent"
                     >
                       <input
-                        type="checkbox"
+                        type={isSingle ? "radio" : "checkbox"}
+                        name={isSingle ? SINGLE_SELECT_GROUP : undefined}
                         checked={selectedIds.has(course.id)}
                         onChange={(e) => onToggle(course, e.target.checked)}
-                        className="h-3.5 w-3.5 rounded border-input accent-primary"
+                        className={`h-3.5 w-3.5 border-input accent-primary ${isSingle ? "" : "rounded"}`}
                       />
                       <BookOpen className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
                       <span className="flex-1 truncate" title={course.fullname}>{course.fullname}</span>

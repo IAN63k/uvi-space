@@ -1,51 +1,62 @@
 "use client";
 
 import { useState } from "react";
-import { CheckCircle2, XCircle, Loader2, UserPlus, UserMinus, AlertTriangle, RotateCcw } from "lucide-react";
+import { CheckCircle2, XCircle, Loader2, UserPlus, UserMinus, AlertTriangle, RotateCcw, Download } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
-import { enrolChunk, unenrolChunk, type SelectedCourse, type CourseOutcome } from "@/lib/matriculas/api";
-import { chunk, dateToTimestamp, friendlyEnrolError } from "@/lib/matriculas/helpers";
+import {
+  enrolUsersChunk,
+  unenrolUsersChunk,
+  roleLabel,
+  type BulkUserRow,
+  type SelectedCourse,
+} from "@/lib/matriculas/api";
+import { chunk, dateToTimestamp, downloadCsv, friendlyEnrolError } from "@/lib/matriculas/helpers";
 import type { EnrolmentMode } from "@/components/matriculas/enrolment-config-panel";
 import type { MoodleConfig } from "@/lib/encrypted-local-storage";
-import type { EnrolmentResult } from "@/lib/moodle/types";
 
-const CHUNK_SIZE = 10;
+const CHUNK_SIZE = 25;
 
-interface ExecutionPanelProps {
+interface BulkExecutionPanelProps {
   config: MoodleConfig | null;
   mode: EnrolmentMode;
-  userId: number;
-  userName: string;
-  selectedCourses: SelectedCourse[];
-  roleId: number;
+  course: SelectedCourse;
+  rows: BulkUserRow[];
   /** Fechas en formato YYYY-MM-DD (solo para matricular); vacío = sin valor */
   timestart: string;
   timeend: string;
   onReset: () => void;
 }
 
+interface BulkResult {
+  userId: number;
+  userName: string;
+  identifier: string;
+  roleId: number;
+  success: boolean;
+  error?: string;
+}
+
 type Phase = "idle" | "confirm" | "running" | "done";
 
-export function ExecutionPanel({
+export function BulkExecutionPanel({
   config,
   mode,
-  userId,
-  userName,
-  selectedCourses,
-  roleId,
+  course,
+  rows,
   timestart,
   timeend,
   onReset,
-}: ExecutionPanelProps) {
+}: BulkExecutionPanelProps) {
   const [phase, setPhase] = useState<Phase>("idle");
   const [processed, setProcessed] = useState(0);
-  const [results, setResults] = useState<EnrolmentResult[]>([]);
+  const [results, setResults] = useState<BulkResult[]>([]);
   const [error, setError] = useState<string | null>(null);
 
-  const total = selectedCourses.length;
+  const total = rows.length;
   const isEnrol = mode === "enrol";
-  const nameById = new Map(selectedCourses.map((c) => [c.id, c.fullname || `Curso ${c.id}`]));
+  const courseName = course.fullname || `Curso ${course.id}`;
+  const rowById = new Map(rows.map((r) => [r.user.id, r]));
 
   const execute = async () => {
     if (!config) {
@@ -59,29 +70,32 @@ export function ExecutionPanel({
     setResults([]);
     setError(null);
 
-    const courseIds = selectedCourses.map((c) => c.id);
-    const batches = chunk(courseIds, CHUNK_SIZE);
-    const accumulated: EnrolmentResult[] = [];
+    const batches = chunk(rows, CHUNK_SIZE);
+    const accumulated: BulkResult[] = [];
 
     try {
       for (const batch of batches) {
-        const outcomes: CourseOutcome[] = isEnrol
-          ? await enrolChunk(config, {
-              userId,
-              courseIds: batch,
-              roleId,
+        const outcomes = isEnrol
+          ? await enrolUsersChunk(config, {
+              courseId: course.id,
+              users: batch.map((r) => ({ userId: r.user.id, roleId: r.roleId })),
               timestart: dateToTimestamp(timestart),
               timeend: dateToTimestamp(timeend),
             })
-          : await unenrolChunk(config, { userId, courseIds: batch });
+          : await unenrolUsersChunk(config, {
+              courseId: course.id,
+              userIds: batch.map((r) => r.user.id),
+            });
 
-        for (const o of outcomes) {
-          const courseName = nameById.get(o.courseId) ?? `Curso ${o.courseId}`;
+        for (const outcome of outcomes) {
+          const row = rowById.get(outcome.userId);
           accumulated.push({
-            courseId: o.courseId,
-            courseName,
-            success: o.success,
-            error: o.success ? undefined : friendlyEnrolError(o.error, courseName),
+            userId: outcome.userId,
+            userName: row?.user.fullname ?? `Usuario ${outcome.userId}`,
+            identifier: row?.user.idnumber || row?.user.username || "",
+            roleId: row?.roleId ?? 0,
+            success: outcome.success,
+            error: outcome.success ? undefined : friendlyEnrolError(outcome.error, courseName),
           });
         }
         setProcessed((p) => p + batch.length);
@@ -100,6 +114,20 @@ export function ExecutionPanel({
     setResults([]);
     setError(null);
     onReset();
+  };
+
+  const exportCsv = () => {
+    const header = ["Usuario", "Identificador", "ID Moodle", "Rol", "Estado", "Detalle"];
+    const body = results.map((r) => [
+      r.userName,
+      r.identifier,
+      r.userId,
+      isEnrol ? roleLabel(r.roleId) : "",
+      r.success ? "Exitoso" : "Error",
+      r.error ?? "",
+    ]);
+    const action = isEnrol ? "matricula" : "desmatricula";
+    downloadCsv(`${action}-curso-${course.id}.csv`, [header, ...body]);
   };
 
   const successCount = results.filter((r) => r.success).length;
@@ -126,23 +154,34 @@ export function ExecutionPanel({
               <XCircle className="h-3.5 w-3.5" /> {failCount} con error
             </span>
           )}
+          {results.length > 0 && (
+            <Button type="button" variant="outline" size="sm" onClick={exportCsv}>
+              <Download className="mr-1.5 h-3.5 w-3.5" /> Exportar CSV
+            </Button>
+          )}
         </div>
 
-        <div className="overflow-hidden rounded-lg border">
+        <div className="max-h-[28rem] overflow-auto rounded-lg border">
           <table className="w-full text-sm">
-            <thead className="bg-muted/50 text-xs uppercase tracking-wider text-muted-foreground">
+            <thead className="sticky top-0 bg-muted/50 text-xs uppercase tracking-wider text-muted-foreground">
               <tr>
-                <th className="px-3 py-2 text-left font-semibold">Curso</th>
+                <th className="px-3 py-2 text-left font-semibold">Usuario</th>
+                {isEnrol && <th className="px-3 py-2 text-left font-semibold">Rol</th>}
                 <th className="px-3 py-2 text-left font-semibold">Estado</th>
               </tr>
             </thead>
             <tbody className="divide-y">
               {results.map((r) => (
-                <tr key={r.courseId} className="align-top">
+                <tr key={r.userId} className="align-top">
                   <td className="px-3 py-2">
-                    <span className="block truncate" title={r.courseName}>{r.courseName}</span>
-                    <span className="font-mono text-[10px] text-muted-foreground">ID {r.courseId}</span>
+                    <span className="block truncate" title={r.userName}>{r.userName}</span>
+                    <span className="font-mono text-[10px] text-muted-foreground">
+                      {r.identifier ? `${r.identifier} · ` : ""}ID {r.userId}
+                    </span>
                   </td>
+                  {isEnrol && (
+                    <td className="px-3 py-2 text-xs text-muted-foreground">{roleLabel(r.roleId)}</td>
+                  )}
                   <td className="px-3 py-2">
                     {r.success ? (
                       <span className="inline-flex items-center gap-1 text-emerald-700 dark:text-emerald-400">
@@ -163,7 +202,7 @@ export function ExecutionPanel({
 
         <Button type="button" variant="outline" onClick={reset}>
           <RotateCcw className="mr-1.5 h-4 w-4" />
-          Nueva matrícula
+          Nueva operación
         </Button>
       </div>
     );
@@ -175,7 +214,7 @@ export function ExecutionPanel({
       <div className="space-y-2">
         <div className="flex items-center gap-2 text-sm font-medium">
           <Loader2 className="h-4 w-4 animate-spin text-primary" />
-          Procesando {Math.min(processed + 1, total)} de {total} cursos…
+          Procesando {Math.min(processed + 1, total)} de {total} usuarios…
         </div>
         <div className="h-2 overflow-hidden rounded-full bg-muted">
           <div className="h-full rounded-full bg-primary transition-all duration-300" style={{ width: `${progressPct}%` }} />
@@ -189,14 +228,16 @@ export function ExecutionPanel({
     <div className="space-y-3">
       <Button type="button" onClick={() => setPhase("confirm")} variant={isEnrol ? "default" : "destructive"}>
         {isEnrol ? <UserPlus className="mr-1.5 h-4 w-4" /> : <UserMinus className="mr-1.5 h-4 w-4" />}
-        {isEnrol ? `Matricular en ${total} curso${total !== 1 ? "s" : ""}` : `Desmatricular de ${total} curso${total !== 1 ? "s" : ""}`}
+        {isEnrol
+          ? `Matricular ${total} usuario${total !== 1 ? "s" : ""}`
+          : `Desmatricular ${total} usuario${total !== 1 ? "s" : ""}`}
       </Button>
 
       {phase === "confirm" && (
         <ConfirmModal
           mode={mode}
-          userName={userName}
-          total={total}
+          courseName={courseName}
+          rows={rows}
           onCancel={() => setPhase("idle")}
           onConfirm={() => void execute()}
         />
@@ -207,18 +248,23 @@ export function ExecutionPanel({
 
 function ConfirmModal({
   mode,
-  userName,
-  total,
+  courseName,
+  rows,
   onCancel,
   onConfirm,
 }: {
   mode: EnrolmentMode;
-  userName: string;
-  total: number;
+  courseName: string;
+  rows: BulkUserRow[];
   onCancel: () => void;
   onConfirm: () => void;
 }) {
   const isEnrol = mode === "enrol";
+  const alreadyEnrolled = rows.filter((r) => r.alreadyEnrolled).length;
+
+  const byRole = new Map<number, number>();
+  for (const row of rows) byRole.set(row.roleId, (byRole.get(row.roleId) ?? 0) + 1);
+
   return (
     <>
       <div className="fixed inset-0 z-[60] bg-black/60 backdrop-blur-sm" onClick={onCancel} />
@@ -229,11 +275,35 @@ function ConfirmModal({
           </div>
           <h2 className="text-sm font-semibold">Confirmar {isEnrol ? "matrícula" : "desmatrícula"}</h2>
         </div>
-        <div className="px-5 py-5 text-sm">
-          ¿Confirmas {isEnrol ? "matricular" : "desmatricular"} a{" "}
-          <span className="font-semibold">{userName}</span> en{" "}
-          <span className="font-semibold">{total}</span> curso{total !== 1 ? "s" : ""}?
+
+        <div className="space-y-3 px-5 py-5 text-sm">
+          <p>
+            ¿Confirmas {isEnrol ? "matricular" : "desmatricular"}{" "}
+            <span className="font-semibold">{rows.length}</span> usuario{rows.length !== 1 ? "s" : ""}{" "}
+            {isEnrol ? "en" : "de"} <span className="font-semibold">{courseName}</span>?
+          </p>
+
+          {isEnrol && (
+            <ul className="space-y-0.5 text-xs text-muted-foreground">
+              {Array.from(byRole.entries()).map(([roleId, count]) => (
+                <li key={roleId}>
+                  {count} × {roleLabel(roleId)}
+                </li>
+              ))}
+            </ul>
+          )}
+
+          {isEnrol && alreadyEnrolled > 0 && (
+            <div className="flex items-start gap-2 rounded-lg border border-amber-200 bg-amber-50/70 px-3 py-2 text-xs text-amber-800 dark:border-amber-800/40 dark:bg-amber-950/20 dark:text-amber-300">
+              <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+              <span>
+                {alreadyEnrolled} ya {alreadyEnrolled !== 1 ? "están matriculados" : "está matriculado"} en el curso.
+                Moodle <strong>añade</strong> el rol indicado, no reemplaza el que ya tienen.
+              </span>
+            </div>
+          )}
         </div>
+
         <div className="flex justify-end gap-2 border-t bg-muted/20 px-5 py-3">
           <Button type="button" variant="outline" size="sm" onClick={onCancel}>Cancelar</Button>
           <Button type="button" size="sm" variant={isEnrol ? "default" : "destructive"} onClick={onConfirm}>

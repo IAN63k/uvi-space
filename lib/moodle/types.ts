@@ -609,6 +609,30 @@ export interface CourseVerificationResult {
   error?: string;
 }
 
+/** Campo admitido por la resolución masiva de usuarios.
+ *  core_user_get_users_by_field no admite fullname, por eso se excluye. */
+export type BulkUserField = Exclude<UserSearchField, "fullname">;
+
+/** Resultado de resolver un identificador de la lista pegada o del CSV */
+export interface UserResolution {
+  /** Valor tal como lo ingresó el usuario, para poder reportar los fallos */
+  value: string;
+  found: boolean;
+  /** Usuario resuelto cuando hay una única coincidencia */
+  user?: MoodleUser;
+  /** true cuando el valor coincide con más de un usuario y hay que desambiguar */
+  ambiguous?: boolean;
+  /** Candidatos cuando ambiguous = true */
+  matches?: MoodleUser[];
+}
+
+/** Resultado por usuario de una operación masiva sobre un mismo curso */
+export interface UserOutcome {
+  userId: number;
+  success: boolean;
+  error?: string;
+}
+
 /** Una matrícula individual para enrol_manual_enrol_users */
 export interface EnrolmentData {
   roleid: number;
