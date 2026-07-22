@@ -45,7 +45,14 @@ const reportNavItems: NavItem[] = [
 ];
 
 const managementNavItems: NavItem[] = [
-  { label: "Matrículas", href: "/gestion/matriculas", shortLabel: "MT" },
+  {
+    label: "Matrículas",
+    shortLabel: "MT",
+    children: [
+      { label: "Por usuario", href: "/gestion/matriculas" },
+      { label: "Masiva por curso", href: "/gestion/matriculas/masiva" },
+    ],
+  },
 ];
 
 const adminNavItems: NavItem[] = [

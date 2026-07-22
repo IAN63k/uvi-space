@@ -1,9 +1,14 @@
 import type { MoodleConfig } from "@/lib/encrypted-local-storage";
 import type {
   MoodleCategory,
+  MoodleEnrolledUser,
+  MoodleUser,
   UserSearchField,
   UserSearchResponse,
   CourseVerificationResult,
+  BulkUserField,
+  UserResolution,
+  UserOutcome,
 } from "@/lib/moodle/types";
 
 // ── Tipos compartidos del cliente ─────────────────────────────────────────────
@@ -119,6 +124,96 @@ export async function unenrolChunk(
 ): Promise<CourseOutcome[]> {
   const data = await postJson<{ results: CourseOutcome[] }>(
     "/api/moodle/matriculas/desenrolar",
+    config,
+    payload,
+  );
+  return data.results;
+}
+
+// ── Matrícula masiva: varios usuarios en un mismo curso ───────────────────────
+
+/** Forma mínima de usuario que maneja la lista de matrícula masiva.
+ *  Unifica lo que devuelven la búsqueda, el lote y los matriculados de un curso. */
+export interface BulkUser {
+  id: number;
+  fullname: string;
+  username: string;
+  email: string;
+  idnumber: string;
+  profileimageurl?: string;
+}
+
+/** De dónde salió el usuario, para poder mostrarlo y depurar la lista */
+export type BulkUserSource = "paste" | "search" | "course";
+
+/** Una fila de la lista de usuarios a matricular, con su rol individual */
+export interface BulkUserRow {
+  user: BulkUser;
+  roleId: number;
+  source: BulkUserSource;
+  /** true si ya está matriculado en el curso destino */
+  alreadyEnrolled?: boolean;
+}
+
+export function toBulkUser(user: MoodleUser | MoodleEnrolledUser): BulkUser {
+  return {
+    id: user.id,
+    fullname: user.fullname,
+    username: user.username,
+    email: user.email,
+    idnumber: user.idnumber ?? "",
+    profileimageurl: "profileimageurl" in user ? user.profileimageurl : undefined,
+  };
+}
+
+export function resolveUsers(
+  config: MoodleConfig,
+  field: BulkUserField,
+  values: string[],
+): Promise<{ resolutions: UserResolution[]; warning?: string }> {
+  return postJson<{ resolutions: UserResolution[]; warning?: string }>(
+    "/api/moodle/matriculas/usuarios-lote",
+    config,
+    { field, values },
+  );
+}
+
+export async function fetchCourseUsers(
+  config: MoodleConfig,
+  courseId: number,
+  roleId?: number,
+): Promise<BulkUser[]> {
+  const data = await postJson<{ users: MoodleEnrolledUser[] }>(
+    "/api/moodle/matriculas/usuarios-curso",
+    config,
+    { courseId, roleId },
+  );
+  return data.users.map(toBulkUser);
+}
+
+export async function enrolUsersChunk(
+  config: MoodleConfig,
+  payload: {
+    courseId: number;
+    users: Array<{ userId: number; roleId: number }>;
+    timestart?: number;
+    timeend?: number;
+  },
+): Promise<UserOutcome[]> {
+  const data = await postJson<{ results: UserOutcome[] }>(
+    "/api/moodle/matriculas/matricular-usuarios",
+    config,
+    payload,
+  );
+  return data.results;
+}
+
+export async function unenrolUsersChunk(
+  config: MoodleConfig,
+  payload: { courseId: number; userIds: number[] },
+): Promise<UserOutcome[]> {
+  const data = await postJson<{ results: UserOutcome[] }>(
+    "/api/moodle/matriculas/desmatricular-usuarios",
     config,
     payload,
   );
