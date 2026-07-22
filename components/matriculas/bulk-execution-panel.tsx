@@ -79,8 +79,8 @@ export function BulkExecutionPanel({
           ? await enrolUsersChunk(config, {
               courseId: course.id,
               users: batch.map((r) => ({ userId: r.user.id, roleId: r.roleId })),
-              timestart: dateToTimestamp(timestart),
-              timeend: dateToTimestamp(timeend),
+              timestart: dateToTimestamp(timestart, "start"),
+              timeend: dateToTimestamp(timeend, "end"),
             })
           : await unenrolUsersChunk(config, {
               courseId: course.id,
