@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { Settings2, UserPlus, UserMinus, ListChecks, Users, SlidersHorizontal, Play, CalendarRange } from "lucide-react";
+import { Settings2, UserPlus, UserMinus, ListChecks, Users, SlidersHorizontal, Play, CalendarRange, AlertTriangle } from "lucide-react";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -21,6 +21,7 @@ import {
   type BulkUserSource,
   type SelectedCourse,
 } from "@/lib/matriculas/api";
+import { enrolmentDateWarning } from "@/lib/matriculas/helpers";
 
 export default function MatriculaMasivaPage() {
   const [moodleConfig, setMoodleConfig] = useState<MoodleConfig | null>(null);
@@ -94,6 +95,7 @@ export default function MatriculaMasivaPage() {
 
   const isEnrol = mode === "enrol";
   const canExecute = course !== null && rows.length > 0;
+  const dateWarning = isEnrol ? enrolmentDateWarning(timestart, timeend) : null;
 
   const roleBreakdown = useMemo(() => {
     const byRole = new Map<number, number>();
@@ -213,6 +215,13 @@ export default function MatriculaMasivaPage() {
                   />
                   <p className="text-[10px] text-muted-foreground/70">Vacío = sin límite</p>
                 </div>
+              </div>
+            )}
+
+            {dateWarning && (
+              <div className="flex items-start gap-2 rounded-lg border border-amber-200 bg-amber-50/70 px-3 py-2 text-sm text-amber-800 dark:border-amber-800/40 dark:bg-amber-950/20 dark:text-amber-300">
+                <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
+                {dateWarning}
               </div>
             )}
 
