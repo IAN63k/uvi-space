@@ -1,9 +1,10 @@
 "use client";
 
-import { ShieldCheck, CalendarRange } from "lucide-react";
+import { ShieldCheck, CalendarRange, AlertTriangle } from "lucide-react";
 
 import { Label } from "@/components/ui/label";
 import { ENROLMENT_ROLES, roleLabel } from "@/lib/matriculas/api";
+import { enrolmentDateWarning } from "@/lib/matriculas/helpers";
 
 export type EnrolmentMode = "enrol" | "unenrol";
 
@@ -31,6 +32,7 @@ export function EnrolmentConfigPanel({
   courseCount,
 }: EnrolmentConfigPanelProps) {
   const isEnrol = mode === "enrol";
+  const dateWarning = isEnrol ? enrolmentDateWarning(timestart, timeend) : null;
 
   return (
     <div className="space-y-4">
@@ -79,6 +81,13 @@ export function EnrolmentConfigPanel({
             />
             <p className="text-[10px] text-muted-foreground/70">Vacío = sin límite</p>
           </div>
+        </div>
+      )}
+
+      {dateWarning && (
+        <div className="flex items-start gap-2 rounded-lg border border-amber-200 bg-amber-50/70 px-3 py-2 text-sm text-amber-800 dark:border-amber-800/40 dark:bg-amber-950/20 dark:text-amber-300">
+          <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
+          {dateWarning}
         </div>
       )}
 

@@ -70,8 +70,8 @@ export function ExecutionPanel({
               userId,
               courseIds: batch,
               roleId,
-              timestart: dateToTimestamp(timestart),
-              timeend: dateToTimestamp(timeend),
+              timestart: dateToTimestamp(timestart, "start"),
+              timeend: dateToTimestamp(timeend, "end"),
             })
           : await unenrolChunk(config, { userId, courseIds: batch });
 
