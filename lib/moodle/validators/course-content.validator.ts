@@ -33,6 +33,7 @@ import {
   getGradeItems,
   getAssignmentsByCourse,
   getQuizzesByCourse,
+  getEnrolledUsersByRole,
 } from "@/lib/moodle/moodle.service";
 
 // ── Configurable constants ────────────────────────────────────────────────────
@@ -186,6 +187,7 @@ const DATE_EXEMPT_SECTION_NAMES = new Set<string>([
   "¡Explórame!",
   "Bienvenidos",
   "Bienvenido",
+  "¡Bienvenida!",
 ]);
 
 const DOCUMENT_MIMETYPES = new Set([
@@ -249,11 +251,16 @@ export async function validateCourseContent(
   let gradeTreeError: string | null = null;
   let allGradeItems: Awaited<ReturnType<typeof getGradeItems>> = [];
   let gradeItemsError: string | null = null;
+  // Total enrolled people in the course (all roles). null if the endpoint failed.
+  let enrolledCount: number | null = null;
 
   await Promise.all([
     getAssignmentsByCourse(moodleUrl, token, courseId)
       .then((a) => { assigns = a; console.log("[mod_assign_get_assignments]", JSON.stringify(a, null, 2)); })
       .catch((err) => { assignsError = err instanceof Error ? err.message : "Error desconocido"; }),
+    getEnrolledUsersByRole(moodleUrl, token, courseId)
+      .then((users) => { enrolledCount = users.length; })
+      .catch(() => { enrolledCount = null; }),
     getQuizzesByCourse(moodleUrl, token, courseId)
       .then((q) => { quizzes = q; console.log("[mod_quiz_get_quizzes_by_courses]", JSON.stringify(q, null, 2)); })
       .catch((err) => { quizzesError = err instanceof Error ? err.message : "Error desconocido"; }),
@@ -682,6 +689,7 @@ export async function validateCourseContent(
       );
 
       return {
+        sectionId:     s.id,
         sectionNumber: s.section,
         sectionName:   s.name || `Sección ${s.section}`,
         hasStartDate,
@@ -1072,6 +1080,7 @@ export async function validateCourseContent(
     courseName,
     courseFormat,
     totalSections,
+    enrolledCount,
     presentationSection: presentationSectionNumber,
     professorPage: professorPageResult,
     consultationForum: consultationForumResult,

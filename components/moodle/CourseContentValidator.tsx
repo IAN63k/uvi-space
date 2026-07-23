@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import Link from "next/link";
 import {
   CheckCircle2,
   XCircle,
@@ -27,6 +28,8 @@ import {
   HelpCircle,
   Info,
   Pencil,
+  Users,
+  ArrowUpRight,
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -144,6 +147,9 @@ interface AccordionItemProps {
   onToggle: () => void;
   children: React.ReactNode;
   notFoundLabel?: string;
+  /** When set, shows a quick link (opens in Moodle) at the top of the body */
+  editUrl?: string;
+  editLabel?: string;
 }
 
 function AccordionItem({
@@ -159,6 +165,8 @@ function AccordionItem({
   onToggle,
   children,
   notFoundLabel,
+  editUrl,
+  editLabel,
 }: AccordionItemProps) {
   const statusColor = passed
     ? "border-emerald-200 dark:border-emerald-800/60"
@@ -226,7 +234,23 @@ function AccordionItem({
                 </p>
               </div>
             ) : (
-              children
+              <>
+                {editUrl && (
+                  <div className="flex justify-end border-b bg-muted/10 px-4 py-2">
+                    <a
+                      href={editUrl}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="inline-flex items-center gap-1.5 rounded-lg border border-blue-200 bg-blue-50 px-3 py-1.5 text-xs font-semibold text-blue-700 shadow-sm transition-colors hover:bg-blue-100 dark:border-blue-800/60 dark:bg-blue-950/40 dark:text-blue-300 dark:hover:bg-blue-900/50"
+                    >
+                      <Pencil className="h-3 w-3" />
+                      {editLabel ?? "Editar en Moodle"}
+                      <ExternalLink className="h-3 w-3" />
+                    </a>
+                  </div>
+                )}
+                {children}
+              </>
             )}
           </div>
         </div>
@@ -256,7 +280,7 @@ function ChecksBody({ checks, footer }: { checks: ValidationCheck[]; footer?: Re
 
 // ── Section Dates Body ────────────────────────────────────────────────────────
 
-function SectionDatesBody({ sections }: { sections: SectionDateCheck[] }) {
+function SectionDatesBody({ sections, moodleBaseUrl }: { sections: SectionDateCheck[]; moodleBaseUrl: string }) {
   if (sections.length === 0) {
     return (
       <div className="px-5 py-8 text-center text-sm text-muted-foreground">
@@ -277,6 +301,7 @@ function SectionDatesBody({ sections }: { sections: SectionDateCheck[] }) {
             <th className="px-3 py-2.5 text-center font-semibold uppercase tracking-widest text-muted-foreground">Fecha inicio</th>
             <th className="px-3 py-2.5 text-center font-semibold uppercase tracking-widest text-muted-foreground">Fecha fin</th>
             <th className="px-3 py-2.5 text-left font-semibold uppercase tracking-widest text-muted-foreground">Estado</th>
+            <th className="px-3 py-2.5 text-right font-semibold uppercase tracking-widest text-muted-foreground">Acción</th>
           </tr>
         </thead>
         <tbody>
@@ -307,6 +332,17 @@ function SectionDatesBody({ sections }: { sections: SectionDateCheck[] }) {
                   ? <span className="rounded-full bg-emerald-50 px-2 py-0.5 font-mono text-[10px] font-semibold text-emerald-600 dark:bg-emerald-950/30 dark:text-emerald-400">OK</span>
                   : <span className="rounded-full bg-rose-50 px-2 py-0.5 font-mono text-[10px] font-semibold text-rose-600 dark:bg-rose-950/30 dark:text-rose-400">Falta formato</span>
                 }
+              </td>
+              <td className="px-3 py-2.5 text-right">
+                <a
+                  href={`${moodleBaseUrl}/course/editsection.php?id=${s.sectionId}`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="inline-flex items-center gap-1 rounded-lg border border-blue-200 bg-blue-50 px-2 py-1 text-[10px] font-semibold text-blue-700 transition-colors hover:bg-blue-100 dark:border-blue-800/60 dark:bg-blue-950/40 dark:text-blue-300 dark:hover:bg-blue-900/50"
+                >
+                  <Pencil className="h-2.5 w-2.5" />
+                  Editar
+                </a>
               </td>
             </tr>
           ))}
@@ -747,6 +783,29 @@ function StatCard({ icon: Icon, label, value }: { icon: React.ElementType; label
   );
 }
 
+// ── Enrollment Stat Card (links to the enrolment management page) ──────────────
+
+function EnrollmentStatCard({ count }: { count: number | null }) {
+  return (
+    <Link
+      href="/gestion/matriculas"
+      className="group flex items-center gap-3 rounded-2xl border bg-muted/20 px-5 py-3.5 shadow-xs transition-colors hover:border-primary/40 hover:bg-accent"
+    >
+      <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border bg-background shadow-sm">
+        <Users className="h-4 w-4 text-muted-foreground" />
+      </div>
+      <div className="min-w-0">
+        <p className="text-[10px] font-semibold uppercase tracking-widest text-muted-foreground">Personas en el curso</p>
+        <p className="mt-0.5 text-2xl font-bold tabular-nums leading-none tracking-tight">{count ?? "—"}</p>
+      </div>
+      <span className="ml-1 inline-flex items-center gap-1 self-start rounded-full border border-primary/20 bg-primary/5 px-2 py-0.5 text-[10px] font-semibold text-primary transition-colors group-hover:bg-primary/10">
+        Gestionar
+        <ArrowUpRight className="h-2.5 w-2.5" />
+      </span>
+    </Link>
+  );
+}
+
 // ── Main Component ─────────────────────────────────────────────────────────────
 
 export interface CourseContentValidatorProps {
@@ -828,6 +887,7 @@ export function CourseContentValidator({ result }: CourseContentValidatorProps) 
         {/* ── Top stats row ── */}
         <div className="flex flex-wrap items-stretch gap-3">
           <StatCard icon={Layers} label="Secciones del curso" value={result.totalSections} />
+          <EnrollmentStatCard count={result.enrolledCount} />
           <div className="ml-auto flex items-center">
             <div className={`flex items-center gap-2.5 rounded-2xl border px-5 py-3.5 shadow-xs ${
               result.passed
@@ -867,6 +927,7 @@ export function CourseContentValidator({ result }: CourseContentValidatorProps) 
             found={professorPage.found} passed={professorPage.passed}
             passedCount={pageChecks.filter(c => c.passed).length} totalCount={pageChecks.length}
             cmid={professorPage.cmid}
+            editUrl={professorPage.cmid !== null ? `${moodleBaseUrl}/course/modedit.php?update=${professorPage.cmid}` : undefined}
             isOpen={openAccordion === "page"} onToggle={() => toggleAccordion("page")}
             notFoundLabel="No se encontró un módulo de tipo page en la sección de presentación"
           >
@@ -886,6 +947,7 @@ export function CourseContentValidator({ result }: CourseContentValidatorProps) 
             found={consultationForum.found} passed={consultationForum.passed}
             passedCount={forumChecks.filter(c => c.passed).length} totalCount={forumChecks.length}
             cmid={consultationForum.cmid}
+            editUrl={consultationForum.cmid !== null ? `${moodleBaseUrl}/course/modedit.php?update=${consultationForum.cmid}` : undefined}
             isOpen={openAccordion === "forum"} onToggle={() => toggleAccordion("forum")}
             notFoundLabel="No se encontró un foro con número ID FC01 en la sección de presentación"
           >
@@ -939,7 +1001,7 @@ export function CourseContentValidator({ result }: CourseContentValidatorProps) 
             isOpen={openAccordion === "sectionDates"} onToggle={() => toggleAccordion("sectionDates")}
             notFoundLabel="No hay secciones activas para validar"
           >
-            <SectionDatesBody sections={sectionDates.sections} />
+            <SectionDatesBody sections={sectionDates.sections} moodleBaseUrl={moodleBaseUrl} />
           </AccordionItem>
 
           {/* ── Microcurrículo ── */}
@@ -995,6 +1057,8 @@ export function CourseContentValidator({ result }: CourseContentValidatorProps) 
               gradebook.categoryItems.length
             }
             cmid={null}
+            editUrl={`${moodleBaseUrl}/grade/edit/tree/index.php?id=${result.courseId}`}
+            editLabel="Ir al libro de calificaciones"
             isOpen={openAccordion === "gradebook"}
             onToggle={() => toggleAccordion("gradebook")}
             notFoundLabel="No se pudieron obtener las categorías del libro de calificaciones"

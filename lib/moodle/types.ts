@@ -331,6 +331,8 @@ export interface MicrocurriculumChecks {
 }
 
 export interface SectionDateCheck {
+  /** Course section id (used to build the edit-section URL in Moodle) */
+  sectionId: number;
   sectionNumber: number;
   sectionName: string;
   hasStartDate: ValidationCheck;
@@ -513,6 +515,8 @@ export interface CourseContentValidationResult {
   courseName: string;
   courseFormat: string;
   totalSections: number;
+  /** Total enrolled people in the course (all roles); null if unavailable */
+  enrolledCount: number | null;
   presentationSection: number;
   professorPage: {
     found: boolean;
