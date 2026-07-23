@@ -17,6 +17,7 @@ import type {
   AssignActivityCheck,
   QuizActivityChecks,
   QuizActivityCheck,
+  QuizActivityInfo,
   ForumActivityChecks,
   ForumActivityCheck,
   ForumActivityInfo,
@@ -619,19 +620,40 @@ export async function validateCourseContent(
     const firstContentSection = 1;
 
     // Only validate visible content sections (section >= firstContentSection)
-    // Exclude sections named "Estudiante Unicamacho" or whose name contains "Tema"
+    // Exclude sections named "Estudiante Unicamacho", "¡Alístame!" or
+    // "¡Explorame!", or whose name contains "Tema".
     const contentSections = sections.filter((s) => {
       if (s.section < firstContentSection || s.visible !== 1) return false;
       const name = (s.name ?? "").trim();
       if (name === "Estudiante Unicamacho") return false;
+      // Case-sensitive exclusion for these named sections.
+      if (name === "¡Alístame!" || name === "¡Explorame!") return false;
       if (/Tema/i.test(name)) return false;
       return true;
     });
 
+    // "tiles" courses may hold the dates inside a "text and media" (label)
+    // module rather than in the section summary.
+    const isTilesFormat = courseFormat === "tiles";
+
     const sectionChecks: SectionDateCheck[] = contentSections.map((s) => {
-      const text       = htmlToPlainText(s.summary ?? "");
-      const startMatch = START_DATE_RE.exec(text);
-      const endMatch   = END_DATE_RE.exec(text);
+      const summaryText = htmlToPlainText(s.summary ?? "");
+      let startMatch    = START_DATE_RE.exec(summaryText);
+      let endMatch      = END_DATE_RE.exec(summaryText);
+
+      // Fallback for tiles: if a date is missing from the section summary,
+      // look for it inside the section's "text and media" (label) modules.
+      if (isTilesFormat && (!startMatch || !endMatch)) {
+        const labelText = s.modules
+          .filter((m) => m.modname === "label")
+          .map((m) => htmlToPlainText(m.description ?? ""))
+          .join(" ");
+
+        if (labelText) {
+          startMatch = startMatch ?? START_DATE_RE.exec(labelText);
+          endMatch   = endMatch   ?? END_DATE_RE.exec(labelText);
+        }
+      }
 
       const startValue = startMatch?.[1] ?? null;
       const endValue   = endMatch?.[1] ?? null;
@@ -919,18 +941,6 @@ export async function validateCourseContent(
       const availability    = cmDetail?.availability ?? null;
 
       const checks: QuizActivityChecks = {
-        timeOpen: makeCheck(
-          q.timeopen > 0,
-          "> 0 (ajustada)",
-          q.timeopen === 0 ? "0 (sin fecha)" : new Date(q.timeopen * 1000).toLocaleString("es-CO"),
-          "Fecha de apertura ajustada",
-        ),
-        timeClose: makeCheck(
-          q.timeclose > 0,
-          "> 0 (ajustada)",
-          q.timeclose === 0 ? "0 (sin fecha)" : new Date(q.timeclose * 1000).toLocaleString("es-CO"),
-          "Fecha de cierre ajustada",
-        ),
         completionView: makeCheck(
           completionView === 1,
           1,
@@ -963,7 +973,13 @@ export async function validateCourseContent(
         ),
       };
 
-      return { cmid: q.coursemodule, name: q.name, checks, passed: Object.values(checks).every((c) => c.passed) };
+      // Open/close dates are informational only — they never fail the quiz.
+      const info: QuizActivityInfo = {
+        timeOpen:  q.timeopen ?? 0,
+        timeClose: q.timeclose ?? 0,
+      };
+
+      return { cmid: q.coursemodule, name: q.name, checks, info, passed: Object.values(checks).every((c) => c.passed) };
     });
 
     // ── Forums ─────────────────────────────────────────────────────────────────
