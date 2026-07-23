@@ -40,6 +40,7 @@ import type {
   QuizActivityCheck,
   ForumActivityCheck,
   ForumActivityInfo,
+  QuizActivityInfo,
 } from "@/lib/moodle/types";
 
 // ── Check Row ─────────────────────────────────────────────────────────────────
@@ -452,18 +453,28 @@ function GradebookBody({
 
 // ── Forum Info Row ───────────────────────────────────────────────────────────
 
-function ForumInfoSection({ info }: { info: ForumActivityInfo }) {
+function forumInfoItems(info: ForumActivityInfo): { label: string; value: string }[] {
   const assessedLabel = info.assessed === 0 ? "Sin evaluación" : `Tipo de agregación: ${info.assessed}`;
   const scaleLabel    = info.scale === 0 ? "Sin calificación" : info.scale > 0 ? `Puntuación máxima: ${info.scale}` : `Escala ID: ${Math.abs(info.scale)}`;
   const availLabel    = info.availability ? "Con restricciones" : "Sin restricciones";
 
-  const items = [
+  return [
     { label: "Tipo de foro", value: info.forumType },
     { label: "Evaluación del foro completo", value: assessedLabel },
     { label: "Calificaciones", value: scaleLabel },
     { label: "Disponibilidad", value: availLabel },
   ];
+}
 
+function quizInfoItems(info: QuizActivityInfo): { label: string; value: string }[] {
+  const fmt = (ts: number) => (ts === 0 ? "Sin fecha" : new Date(ts * 1000).toLocaleString("es-CO"));
+  return [
+    { label: "Fecha de apertura", value: fmt(info.timeOpen) },
+    { label: "Fecha de cierre", value: fmt(info.timeClose) },
+  ];
+}
+
+function ActivityInfoSection({ items }: { items: { label: string; value: string }[] }) {
   return (
     <div className="mt-1 border-t border-dashed border-border/50">
       <div className="flex items-center gap-2 px-3.5 pt-2.5 pb-1">
@@ -513,7 +524,11 @@ function ActivityListBody({ activities, moodleBaseUrl }: { activities: AnyActivi
         const checks = Object.values(activity.checks) as ValidationCheck[];
         const failCount = checks.filter((c) => !c.passed).length;
         const isOpen = openItem === activity.cmid;
-        const hasInfo = "info" in activity;
+        const infoItems = "info" in activity
+          ? ("forumType" in activity.info
+              ? forumInfoItems(activity.info)
+              : quizInfoItems(activity.info))
+          : null;
         const editUrl = `${moodleBaseUrl}/course/modedit.php?update=${activity.cmid}`;
 
         return (
@@ -561,8 +576,8 @@ function ActivityListBody({ activities, moodleBaseUrl }: { activities: AnyActivi
                     <CheckRow key={idx} check={check} index={idx} />
                   ))}
 
-                  {/* Forum info section (non-validated) */}
-                  {hasInfo && <ForumInfoSection info={(activity as ForumActivityCheck).info} />}
+                  {/* Info section (non-validated): forum details / quiz dates */}
+                  {infoItems && <ActivityInfoSection items={infoItems} />}
 
                   {/* Edit in Moodle link when there are failures */}
                   {failCount > 0 && (

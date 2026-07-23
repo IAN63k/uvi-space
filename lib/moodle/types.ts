@@ -183,6 +183,8 @@ export interface CourseModule {
   availability: string | null;
   idnumber?: string;
   contents?: ModuleContent[];
+  /** HTML content of the module. Present for "label" (text and media) modules. */
+  description?: string;
 }
 
 export interface CourseModuleDetail {
@@ -449,8 +451,6 @@ export interface AssignActivityCheck {
 }
 
 export interface QuizActivityChecks {
-  timeOpen: ValidationCheck;           // Fecha de apertura ajustada
-  timeClose: ValidationCheck;          // Fecha de cierre ajustada
   completionView: ValidationCheck;     // Finalización: Ver la actividad
   completionGrade: ValidationCheck;    // Recibir una calificación: Cualquier calificación
   accessRestrictions: ValidationCheck; // Restricciones de acceso: Ninguno
@@ -458,10 +458,19 @@ export interface QuizActivityChecks {
   preferredBehaviour: ValidationCheck; // Comportamiento: retroalimentación diferida
 }
 
+/** Non-validated info displayed for quizzes (informational only) */
+export interface QuizActivityInfo {
+  /** Open date as unix seconds; 0 = no date set */
+  timeOpen: number;
+  /** Close date as unix seconds; 0 = no date set */
+  timeClose: number;
+}
+
 export interface QuizActivityCheck {
   cmid: number;
   name: string;
   checks: QuizActivityChecks;
+  info: QuizActivityInfo;
   passed: boolean;
 }
 
