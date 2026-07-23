@@ -178,6 +178,16 @@ const START_DATE_RE  = new RegExp(String.raw`Fecha\s+de\s+Inicio\s*:\s*` + DATE_
  */
 const END_DATE_RE    = new RegExp(String.raw`Fecha\s+de\s+Finalizaci[oó]n\s*:\s*` + DATE_VALUE, "i");
 
+/** Section names exempt from date validation (case-sensitive, exact match). */
+const DATE_EXEMPT_SECTION_NAMES = new Set<string>([
+  "Estudiante Unicamacho",
+  "¡Alístame!",
+  "¡Explorame!",
+  "¡Explórame!",
+  "Bienvenidos",
+  "Bienvenido",
+]);
+
 const DOCUMENT_MIMETYPES = new Set([
   "application/pdf",
   "application/msword",
@@ -619,15 +629,14 @@ export async function validateCourseContent(
     // Presentation is always section 0; content sections start at 1.
     const firstContentSection = 1;
 
-    // Only validate visible content sections (section >= firstContentSection)
-    // Exclude sections named "Estudiante Unicamacho", "¡Alístame!" or
-    // "¡Explorame!", or whose name contains "Tema".
+    // Only validate visible content sections (section >= firstContentSection).
+    // Exclude sections whose exact name is in DATE_EXEMPT_SECTION_NAMES, or
+    // whose name contains "Tema".
     const contentSections = sections.filter((s) => {
       if (s.section < firstContentSection || s.visible !== 1) return false;
       const name = (s.name ?? "").trim();
-      if (name === "Estudiante Unicamacho") return false;
       // Case-sensitive exclusion for these named sections.
-      if (name === "¡Alístame!" || name === "¡Explorame!") return false;
+      if (DATE_EXEMPT_SECTION_NAMES.has(name)) return false;
       if (/Tema/i.test(name)) return false;
       return true;
     });
