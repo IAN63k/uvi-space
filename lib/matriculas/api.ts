@@ -1,4 +1,5 @@
 import type { MoodleConfig } from "@/lib/encrypted-local-storage";
+import { postMoodleJson } from "@/lib/moodle/api-client";
 import type {
   MoodleCategory,
   MoodleEnrolledUser,
@@ -35,26 +36,6 @@ export interface CategoryItem {
   coursecount: number;
 }
 
-// ── Helper genérico ───────────────────────────────────────────────────────────
-
-async function postJson<T>(
-  url: string,
-  config: MoodleConfig,
-  payload: Record<string, unknown>,
-): Promise<T> {
-  const res = await fetch(url, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ moodleUrl: config.moodleUrl, token: config.token, ...payload }),
-  });
-
-  const data = (await res.json()) as T & { message?: string };
-  if (!res.ok) {
-    throw new Error(data?.message ?? "Error inesperado al contactar la API");
-  }
-  return data;
-}
-
 // ── Operaciones ───────────────────────────────────────────────────────────────
 
 export function searchUser(
@@ -62,14 +43,14 @@ export function searchUser(
   field: UserSearchField,
   value: string,
 ): Promise<UserSearchResponse> {
-  return postJson<UserSearchResponse>("/api/moodle/matriculas/usuario", config, { field, value });
+  return postMoodleJson<UserSearchResponse>("/api/moodle/matriculas/usuario", config, { field, value });
 }
 
 export async function verifyCourses(
   config: MoodleConfig,
   courseIds: number[],
 ): Promise<CourseVerificationResult[]> {
-  const data = await postJson<{ results: CourseVerificationResult[] }>(
+  const data = await postMoodleJson<{ results: CourseVerificationResult[] }>(
     "/api/moodle/matriculas/verificar-cursos",
     config,
     { courseIds },
@@ -81,7 +62,7 @@ export async function fetchCategories(
   config: MoodleConfig,
   parentId: number,
 ): Promise<CategoryItem[]> {
-  const data = await postJson<{ categories: MoodleCategory[] }>(
+  const data = await postMoodleJson<{ categories: MoodleCategory[] }>(
     "/api/moodle/categorias",
     config,
     { parentId },
@@ -98,7 +79,7 @@ export async function fetchCategoryCourses(
   config: MoodleConfig,
   categoryId: number,
 ): Promise<SelectedCourse[]> {
-  const data = await postJson<{ courses: Array<SelectedCourse & { idnumber: string }> }>(
+  const data = await postMoodleJson<{ courses: Array<SelectedCourse & { idnumber: string }> }>(
     "/api/moodle/matriculas/cursos-categoria",
     config,
     { categoryId },
@@ -110,7 +91,7 @@ export async function enrolChunk(
   config: MoodleConfig,
   payload: { userId: number; courseIds: number[]; roleId: number; timestart?: number; timeend?: number },
 ): Promise<CourseOutcome[]> {
-  const data = await postJson<{ results: CourseOutcome[] }>(
+  const data = await postMoodleJson<{ results: CourseOutcome[] }>(
     "/api/moodle/matriculas/enrolar",
     config,
     payload,
@@ -122,7 +103,7 @@ export async function unenrolChunk(
   config: MoodleConfig,
   payload: { userId: number; courseIds: number[] },
 ): Promise<CourseOutcome[]> {
-  const data = await postJson<{ results: CourseOutcome[] }>(
+  const data = await postMoodleJson<{ results: CourseOutcome[] }>(
     "/api/moodle/matriculas/desenrolar",
     config,
     payload,
@@ -171,7 +152,7 @@ export function resolveUsers(
   field: BulkUserField,
   values: string[],
 ): Promise<{ resolutions: UserResolution[]; warning?: string }> {
-  return postJson<{ resolutions: UserResolution[]; warning?: string }>(
+  return postMoodleJson<{ resolutions: UserResolution[]; warning?: string }>(
     "/api/moodle/matriculas/usuarios-lote",
     config,
     { field, values },
@@ -183,7 +164,7 @@ export async function fetchCourseUsers(
   courseId: number,
   roleId?: number,
 ): Promise<BulkUser[]> {
-  const data = await postJson<{ users: MoodleEnrolledUser[] }>(
+  const data = await postMoodleJson<{ users: MoodleEnrolledUser[] }>(
     "/api/moodle/matriculas/usuarios-curso",
     config,
     { courseId, roleId },
@@ -200,7 +181,7 @@ export async function enrolUsersChunk(
     timeend?: number;
   },
 ): Promise<UserOutcome[]> {
-  const data = await postJson<{ results: UserOutcome[] }>(
+  const data = await postMoodleJson<{ results: UserOutcome[] }>(
     "/api/moodle/matriculas/matricular-usuarios",
     config,
     payload,
@@ -212,7 +193,7 @@ export async function unenrolUsersChunk(
   config: MoodleConfig,
   payload: { courseId: number; userIds: number[] },
 ): Promise<UserOutcome[]> {
-  const data = await postJson<{ results: UserOutcome[] }>(
+  const data = await postMoodleJson<{ results: UserOutcome[] }>(
     "/api/moodle/matriculas/desmatricular-usuarios",
     config,
     payload,
