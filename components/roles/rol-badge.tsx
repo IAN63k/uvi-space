@@ -1,5 +1,5 @@
 import { Badge } from "@/components/ui/badge";
-import { esRolAsignable, nombreRol } from "@/lib/moodle/roles";
+import { nombreRol, rolPorId } from "@/lib/moodle/roles";
 import { cn } from "@/lib/utils";
 
 interface RolBadgeProps {
@@ -9,17 +9,22 @@ interface RolBadgeProps {
   className?: string;
 }
 
-/** Los roles que la herramienta gestiona se distinguen de los informativos:
- *  el operador ve de un vistazo sobre cuáles puede actuar. */
+/** Los roles institucionales se distinguen de los core de Moodle, y ambos de
+ *  los que no están en el catálogo y la herramienta no puede tocar. */
 export function RolBadge({ roleId, nombreEnMoodle, className }: RolBadgeProps) {
-  const gestionable = esRolAsignable(roleId);
+  const rol = rolPorId(roleId);
+
+  if (!rol) {
+    return (
+      <Badge variant="outline" className={cn("text-muted-foreground", className)}>
+        {nombreRol(roleId, nombreEnMoodle)}
+      </Badge>
+    );
+  }
 
   return (
-    <Badge
-      variant={gestionable ? "default" : "outline"}
-      className={cn(!gestionable && "text-muted-foreground", className)}
-    >
-      {nombreRol(roleId, nombreEnMoodle)}
+    <Badge variant={rol.tipo === "institucional" ? "default" : "secondary"} className={className}>
+      {rol.nombre}
     </Badge>
   );
 }

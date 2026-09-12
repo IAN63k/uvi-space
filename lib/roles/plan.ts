@@ -1,4 +1,4 @@
-import { esRolConocido } from "@/lib/moodle/roles";
+import { ROL_EDITINGTEACHER, esRolConocido } from "@/lib/moodle/roles";
 
 import type {
   ModoCambio,
@@ -86,6 +86,61 @@ export function construirPlan({
     cursos: new Set(filas.map((fila) => fila.courseId)).size,
     usuarios: new Set(filas.map((fila) => fila.userId)).size,
   };
+}
+
+/** Un curso que se quedaría sin nadie con rol de profesor con edición. */
+export interface CursoSinDocente {
+  courseId: number;
+  docentesAntes: number;
+}
+
+/** Cursos del plan que, después de aplicarlo, no tendrían ningún usuario con
+ *  rol editingteacher.
+ *
+ *  Se calcula sobre los participantes ya consultados, sin llamadas nuevas: hay
+ *  que pasar la lista completa del curso, no solo los usuarios seleccionados,
+ *  porque un docente no seleccionado también cuenta para no dejarlo vacío.
+ *
+ *  Solo se reportan los cursos que sí tenían docente antes: si ya estaba vacío,
+ *  no es este cambio el que lo deja así. */
+export function cursosQueQuedanSinDocente(
+  plan: Plan,
+  todosLosParticipantes: ParticipanteConsolidado[],
+): CursoSinDocente[] {
+  const docentesAntes = new Map<number, Set<number>>();
+
+  for (const participante of todosLosParticipantes) {
+    for (const curso of participante.cursos) {
+      if (!curso.roles.some((rol) => rol.roleId === ROL_EDITINGTEACHER)) continue;
+      const docentes = docentesAntes.get(curso.courseId) ?? new Set<number>();
+      docentes.add(participante.userId);
+      docentesAntes.set(curso.courseId, docentes);
+    }
+  }
+
+  const docentesDespues = new Map<number, Set<number>>();
+  for (const fila of plan.filas) {
+    if (!docentesDespues.has(fila.courseId)) {
+      docentesDespues.set(fila.courseId, new Set(docentesAntes.get(fila.courseId) ?? []));
+    }
+  }
+
+  for (const fila of plan.filas) {
+    const docentes = docentesDespues.get(fila.courseId);
+    if (!docentes) continue;
+
+    // El plan nunca retira el rol destino, así que ambas ramas no se solapan.
+    if (fila.rolesARetirar.includes(ROL_EDITINGTEACHER)) docentes.delete(fila.userId);
+    if (fila.roleDestinoId === ROL_EDITINGTEACHER) docentes.add(fila.userId);
+  }
+
+  const enRiesgo: CursoSinDocente[] = [];
+  for (const [courseId, docentes] of docentesDespues) {
+    const antes = docentesAntes.get(courseId)?.size ?? 0;
+    if (docentes.size === 0 && antes > 0) enRiesgo.push({ courseId, docentesAntes: antes });
+  }
+
+  return enRiesgo.sort((a, b) => a.courseId - b.courseId);
 }
 
 /** Agrupa el plan por curso: cada grupo es una petición al servidor. */

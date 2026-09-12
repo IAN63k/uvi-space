@@ -1,9 +1,12 @@
 "use client";
 
-import { ArrowRight, Minus, Pencil, Play } from "lucide-react";
+import { useMemo, useState } from "react";
+import { ArrowRight, Minus, Pencil, Play, ShieldAlert } from "lucide-react";
 
 import { RolBadge } from "@/components/roles/rol-badge";
 import { Button } from "@/components/ui/button";
+import { Checkbox } from "@/components/ui/checkbox";
+import { Label } from "@/components/ui/label";
 import {
   Table,
   TableBody,
@@ -13,16 +16,34 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { nombreRol } from "@/lib/moodle/roles";
-import type { Plan } from "@/lib/roles/plan";
+import { cursosQueQuedanSinDocente, type Plan } from "@/lib/roles/plan";
+import type { ParticipanteConsolidado } from "@/lib/roles/types";
 
 interface ChangePreviewProps {
   plan: Plan;
+  /** Todos los participantes consultados, no solo los seleccionados: los
+   *  docentes no seleccionados también cuentan para el aviso de abajo. */
+  todosLosParticipantes: ParticipanteConsolidado[];
   onVolver: () => void;
   onEjecutar: () => void;
 }
 
-export function ChangePreview({ plan, onVolver, onEjecutar }: ChangePreviewProps) {
+export function ChangePreview({
+  plan,
+  todosLosParticipantes,
+  onVolver,
+  onEjecutar,
+}: ChangePreviewProps) {
+  const [riesgoAceptado, setRiesgoAceptado] = useState(false);
+
   const hayRetiros = plan.retiros > 0;
+  const sinDocente = useMemo(
+    () => cursosQueQuedanSinDocente(plan, todosLosParticipantes),
+    [plan, todosLosParticipantes],
+  );
+
+  // El aviso no bloquea la operación, solo impide que pase por descuido.
+  const bloqueadoPorRiesgo = sinDocente.length > 0 && !riesgoAceptado;
 
   return (
     <div className="space-y-4">
@@ -32,6 +53,53 @@ export function ChangePreview({ plan, onVolver, onEjecutar }: ChangePreviewProps
         <Contador etiqueta="Cursos afectados" valor={plan.cursos} />
         <Contador etiqueta="Usuarios" valor={plan.usuarios} />
       </dl>
+
+      {sinDocente.length > 0 && (
+        <div className="space-y-2.5 rounded-lg border-2 border-destructive bg-destructive/5 px-4 py-3">
+          <p className="flex items-center gap-2 text-sm font-semibold text-destructive">
+            <ShieldAlert className="h-4 w-4 shrink-0" />
+            {sinDocente.length} curso{sinDocente.length !== 1 ? "s" : ""} se
+            {sinDocente.length !== 1 ? "quedarían" : " quedaría"} sin profesor con edición
+          </p>
+
+          <p className="text-xs text-destructive/90">
+            Al terminar, {sinDocente.length !== 1 ? "estos cursos" : "este curso"} no
+            {sinDocente.length !== 1 ? " tendrían" : " tendría"} ningún usuario con el rol{" "}
+            <span className="font-medium">Profesor con edición</span>. Nadie podría editar
+            {sinDocente.length !== 1 ? "los" : "lo"} hasta que se asigne el rol de nuevo.
+          </p>
+
+          <ul className="flex flex-wrap gap-1.5">
+            {sinDocente.map((curso) => (
+              <li
+                key={curso.courseId}
+                className="rounded border border-destructive/40 bg-background px-2 py-0.5 font-mono text-xs text-destructive"
+              >
+                {curso.courseId}
+                <span className="ml-1.5 font-sans text-[10px] text-destructive/70">
+                  pierde {curso.docentesAntes}
+                </span>
+              </li>
+            ))}
+          </ul>
+
+          <div className="flex items-start gap-2 border-t border-destructive/20 pt-2.5">
+            <Checkbox
+              id="aceptar-sin-docente"
+              checked={riesgoAceptado}
+              onCheckedChange={(valor) => setRiesgoAceptado(valor === true)}
+              className="mt-0.5"
+            />
+            <Label
+              htmlFor="aceptar-sin-docente"
+              className="text-xs font-medium text-destructive"
+            >
+              Entiendo que {sinDocente.length !== 1 ? "estos cursos quedarán" : "este curso quedará"}{" "}
+              sin profesor con edición y quiero continuar
+            </Label>
+          </div>
+        </div>
+      )}
 
       {plan.sinCambios > 0 && (
         <p className="rounded-lg border bg-muted/30 px-3 py-2 text-xs text-muted-foreground">
@@ -106,8 +174,13 @@ export function ChangePreview({ plan, onVolver, onEjecutar }: ChangePreviewProps
         </Table>
       </div>
 
-      <div className="flex flex-wrap gap-2">
-        <Button type="button" variant={hayRetiros ? "destructive" : "default"} onClick={onEjecutar}>
+      <div className="flex flex-wrap items-center gap-2">
+        <Button
+          type="button"
+          variant={hayRetiros ? "destructive" : "default"}
+          onClick={onEjecutar}
+          disabled={bloqueadoPorRiesgo}
+        >
           <Play className="mr-1.5 h-4 w-4" />
           Ejecutar cambios
         </Button>
@@ -115,6 +188,13 @@ export function ChangePreview({ plan, onVolver, onEjecutar }: ChangePreviewProps
           <Pencil className="mr-1.5 h-4 w-4" />
           Volver a configurar
         </Button>
+
+        {bloqueadoPorRiesgo && (
+          <span className="text-xs text-destructive" aria-live="polite">
+            Confirma arriba que aceptas dejar{" "}
+            {sinDocente.length !== 1 ? "los cursos" : "el curso"} sin profesor con edición.
+          </span>
+        )}
       </div>
     </div>
   );

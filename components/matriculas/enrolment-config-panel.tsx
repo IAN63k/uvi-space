@@ -3,7 +3,8 @@
 import { ShieldCheck, CalendarRange, AlertTriangle } from "lucide-react";
 
 import { Label } from "@/components/ui/label";
-import { ENROLMENT_ROLES, roleLabel } from "@/lib/matriculas/api";
+import { RoleOptions } from "@/components/matriculas/role-options";
+import { roleLabel } from "@/lib/matriculas/api";
 import { enrolmentDateWarning } from "@/lib/matriculas/helpers";
 
 export type EnrolmentMode = "enrol" | "unenrol";
@@ -48,9 +49,7 @@ export function EnrolmentConfigPanel({
               onChange={(e) => onRoleChange(Number(e.target.value))}
               className="h-8 w-full rounded-lg border border-input bg-background px-2.5 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
             >
-              {ENROLMENT_ROLES.map((r) => (
-                <option key={r.id} value={r.id}>{r.label}</option>
-              ))}
+              <RoleOptions />
             </select>
           </div>
 
