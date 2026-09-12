@@ -549,28 +549,47 @@ export async function getAssignmentsByCourse(
   return data.courses?.[0]?.assignments ?? [];
 }
 
-/** Fetches enrolled users in a course, optionally filtered by role.
- *  roleId 3 = teacher/editingteacher, 5 = student. Omit to get all roles. */
+/** Participantes de un curso con sus roles.
+ *
+ *  No se envia `userfields`: el payload por defecto ya incluye `roles[]`, y
+ *  acotar los campos obliga a listar `roles` explicitamente o se pierde. */
+export async function getEnrolledUsers(
+  moodleUrl: string,
+  token: string,
+  courseId: number,
+): Promise<MoodleEnrolledUser[]> {
+  const data = await apiCall<MoodleEnrolledUser[]>({
+    moodleUrl,
+    token,
+    wsfunction: "core_enrol_get_enrolled_users",
+    extraParams: { courseid: courseId },
+  });
+
+  return Array.isArray(data) ? data : [];
+}
+
+/** Participantes de un curso filtrados por rol.
+ *  roleId 3 = editingteacher, 4 = teacher, 5 = student. Omitir = todos.
+ *
+ *  El filtro se aplica en codigo a proposito: core_enrol_get_enrolled_users solo
+ *  admite las opciones withcapability, groupid, onlyactive, onlysuspended,
+ *  userfields, limitfrom, limitnumber, sortby y sortdirection, e ignora en
+ *  silencio cualquier otra. Pasar `roleid` como opcion devolvia el curso
+ *  completo sin filtrar (verificado en el curso 32776: 28 participantes con y
+ *  sin filtro de rol).
+ *
+ *  Si el token no puede ver los roles, `roles` llega ausente y el resultado es
+ *  vacio. Es el fallo seguro: antes devolvia a todos los participantes. */
 export async function getEnrolledUsersByRole(
   moodleUrl: string,
   token: string,
   courseId: number,
   roleId?: number,
 ): Promise<MoodleEnrolledUser[]> {
-  const extraParams: Record<string, string | number> = { courseid: courseId };
-  if (roleId !== undefined) {
-    extraParams["options[0][name]"] = "roleid";
-    extraParams["options[0][value]"] = roleId;
-  }
+  const users = await getEnrolledUsers(moodleUrl, token, courseId);
+  if (roleId === undefined) return users;
 
-  const data = await apiCall<MoodleEnrolledUser[]>({
-    moodleUrl,
-    token,
-    wsfunction: "core_enrol_get_enrolled_users",
-    extraParams,
-  });
-
-  return Array.isArray(data) ? data : [];
+  return users.filter((user) => user.roles?.some((role) => role.roleid === roleId));
 }
 
 /** Fetches all quiz instances for a course in a single call. */
