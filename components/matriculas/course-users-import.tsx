@@ -6,7 +6,8 @@ import { Loader2, Download, UserPlus } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { fetchCourseUsers, ENROLMENT_ROLES, type BulkUser } from "@/lib/matriculas/api";
+import { RoleOptions } from "@/components/matriculas/role-options";
+import { fetchCourseUsers, type BulkUser } from "@/lib/matriculas/api";
 import type { MoodleConfig } from "@/lib/encrypted-local-storage";
 
 interface CourseUsersImportProps {
@@ -78,9 +79,7 @@ export function CourseUsersImport({ config, onAdd }: CourseUsersImportProps) {
             className="h-8 w-full rounded-lg border border-input bg-background px-2.5 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
           >
             <option value={0}>Todos los matriculados</option>
-            {ENROLMENT_ROLES.map((r) => (
-              <option key={r.id} value={r.id}>{r.label}</option>
-            ))}
+            <RoleOptions />
           </select>
         </div>
       </div>

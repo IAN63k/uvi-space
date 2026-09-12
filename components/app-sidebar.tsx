@@ -54,6 +54,7 @@ const managementNavItems: NavItem[] = [
       { label: "Masiva por curso", href: "/gestion/matriculas/masiva" },
     ],
   },
+  { label: "Roles en cursos", href: "/gestion/roles", shortLabel: "RL" },
 ];
 
 const adminNavItems: NavItem[] = [

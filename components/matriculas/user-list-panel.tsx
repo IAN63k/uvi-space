@@ -8,7 +8,8 @@ import { Label } from "@/components/ui/label";
 import { BulkUserInput } from "@/components/matriculas/bulk-user-input";
 import { UserSearchAdd } from "@/components/matriculas/user-search-add";
 import { CourseUsersImport } from "@/components/matriculas/course-users-import";
-import { ENROLMENT_ROLES, type BulkUser, type BulkUserRow, type BulkUserSource } from "@/lib/matriculas/api";
+import { RoleOptions } from "@/components/matriculas/role-options";
+import { type BulkUser, type BulkUserRow, type BulkUserSource } from "@/lib/matriculas/api";
 import type { MoodleConfig } from "@/lib/encrypted-local-storage";
 
 type AddMode = "paste" | "search" | "course";
@@ -67,9 +68,7 @@ export function UserListPanel({
               onChange={(e) => onAddRoleChange(Number(e.target.value))}
               className="h-8 w-full rounded-lg border border-input bg-background px-2.5 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
             >
-              {ENROLMENT_ROLES.map((r) => (
-                <option key={r.id} value={r.id}>{r.label}</option>
-              ))}
+              <RoleOptions />
             </select>
             <p className="text-[10px] text-muted-foreground/70">
               Puedes cambiarlo entre bloques para mezclar estudiantes y docentes; cada fila queda editable.
@@ -131,9 +130,7 @@ export function UserListPanel({
                     aria-label={`Rol de ${row.user.fullname}`}
                     className="h-7 shrink-0 rounded-md border border-input bg-background px-1.5 text-xs focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                   >
-                    {ENROLMENT_ROLES.map((r) => (
-                      <option key={r.id} value={r.id}>{r.label}</option>
-                    ))}
+                    <RoleOptions />
                   </select>
                 )}
 
