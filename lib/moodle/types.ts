@@ -689,6 +689,14 @@ export interface UnenrolmentData {
   courseid: number;
 }
 
+/** Una asignación de rol en contexto de curso, para core_role_assign_roles
+ *  y core_role_unassign_roles. El contextlevel siempre es "course". */
+export interface RoleAssignmentData {
+  roleid: number;
+  userid: number;
+  courseid: number;
+}
+
 /** Resultado por curso de una operación de (des)matrícula */
 export interface EnrolmentResult {
   courseId: number;
