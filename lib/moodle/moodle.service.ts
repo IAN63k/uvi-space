@@ -1,6 +1,6 @@
 import https from "node:https";
 import axios from "axios";
-import type { MoodleCategory, MoodleCourse, MoodleEnrolledUser, ValidationRules, CourseError, CourseValidationResult, CategoryNode, CourseSummary, CourseSection, CourseModuleDetail, MoodlePage, MoodleForum, MoodleBlock, GradeTreeNode, GradeItem, MoodleAssignment, MoodleQuiz, MoodleUser, MoodleUserCourse, UserSearchField, BulkUserField, EnrolmentData, UnenrolmentData } from "./types";
+import type { MoodleCategory, MoodleCourse, MoodleEnrolledUser, ValidationRules, CourseError, CourseValidationResult, CategoryNode, CourseSummary, CourseSection, CourseModuleDetail, MoodlePage, MoodleForum, MoodleBlock, GradeTreeNode, GradeItem, MoodleAssignment, MoodleQuiz, MoodleUser, MoodleUserCourse, UserSearchField, BulkUserField, EnrolmentData, UnenrolmentData, RoleAssignmentData } from "./types";
 
 // Axios instance with a custom HTTPS agent that:
 // - Disables strict SSL verification (handles self-signed / intermediate certs common in .edu environments)
@@ -549,28 +549,47 @@ export async function getAssignmentsByCourse(
   return data.courses?.[0]?.assignments ?? [];
 }
 
-/** Fetches enrolled users in a course, optionally filtered by role.
- *  roleId 3 = teacher/editingteacher, 5 = student. Omit to get all roles. */
+/** Participantes de un curso con sus roles.
+ *
+ *  No se envia `userfields`: el payload por defecto ya incluye `roles[]`, y
+ *  acotar los campos obliga a listar `roles` explicitamente o se pierde. */
+export async function getEnrolledUsers(
+  moodleUrl: string,
+  token: string,
+  courseId: number,
+): Promise<MoodleEnrolledUser[]> {
+  const data = await apiCall<MoodleEnrolledUser[]>({
+    moodleUrl,
+    token,
+    wsfunction: "core_enrol_get_enrolled_users",
+    extraParams: { courseid: courseId },
+  });
+
+  return Array.isArray(data) ? data : [];
+}
+
+/** Participantes de un curso filtrados por rol.
+ *  roleId 3 = editingteacher, 4 = teacher, 5 = student. Omitir = todos.
+ *
+ *  El filtro se aplica en codigo a proposito: core_enrol_get_enrolled_users solo
+ *  admite las opciones withcapability, groupid, onlyactive, onlysuspended,
+ *  userfields, limitfrom, limitnumber, sortby y sortdirection, e ignora en
+ *  silencio cualquier otra. Pasar `roleid` como opcion devolvia el curso
+ *  completo sin filtrar (verificado en el curso 32776: 28 participantes con y
+ *  sin filtro de rol).
+ *
+ *  Si el token no puede ver los roles, `roles` llega ausente y el resultado es
+ *  vacio. Es el fallo seguro: antes devolvia a todos los participantes. */
 export async function getEnrolledUsersByRole(
   moodleUrl: string,
   token: string,
   courseId: number,
   roleId?: number,
 ): Promise<MoodleEnrolledUser[]> {
-  const extraParams: Record<string, string | number> = { courseid: courseId };
-  if (roleId !== undefined) {
-    extraParams["options[0][name]"] = "roleid";
-    extraParams["options[0][value]"] = roleId;
-  }
+  const users = await getEnrolledUsers(moodleUrl, token, courseId);
+  if (roleId === undefined) return users;
 
-  const data = await apiCall<MoodleEnrolledUser[]>({
-    moodleUrl,
-    token,
-    wsfunction: "core_enrol_get_enrolled_users",
-    extraParams,
-  });
-
-  return Array.isArray(data) ? data : [];
+  return users.filter((user) => user.roles?.some((role) => role.roleid === roleId));
 }
 
 /** Fetches all quiz instances for a course in a single call. */
@@ -773,5 +792,52 @@ export async function unenrolUsers(
     token,
     wsfunction: "enrol_manual_unenrol_users",
     params,
+  });
+}
+
+// ── Asignación de roles en contexto de curso ─────────────────────────────────
+
+function paramsDeRoles(clave: string, asignaciones: RoleAssignmentData[]): Record<string, string | number> {
+  const params: Record<string, string | number> = {};
+  asignaciones.forEach((a, i) => {
+    params[`${clave}[${i}][roleid]`] = a.roleid;
+    params[`${clave}[${i}][userid]`] = a.userid;
+    params[`${clave}[${i}][contextlevel]`] = "course";
+    params[`${clave}[${i}][instanceid]`] = a.courseid;
+  });
+  return params;
+}
+
+/** Asigna roles en contexto de curso (core_role_assign_roles).
+ *  No matricula: el usuario ya debe estar inscrito en el curso. */
+export async function assignRoles(
+  moodleUrl: string,
+  token: string,
+  asignaciones: RoleAssignmentData[],
+): Promise<void> {
+  await apiCallPost<unknown>({
+    moodleUrl,
+    token,
+    wsfunction: "core_role_assign_roles",
+    params: paramsDeRoles("assignments", asignaciones),
+  });
+}
+
+/** Retira asignaciones de rol en contexto de curso (core_role_unassign_roles).
+ *  No desmatricula: el usuario sigue inscrito, solo pierde el rol.
+ *
+ *  Moodle rechaza retirar una asignación creada por un plugin de matriculación
+ *  (las que tienen `component` en role_assignments) y no hay forma de saberlo
+ *  antes de intentarlo: el error llega como excepción de esta llamada. */
+export async function unassignRoles(
+  moodleUrl: string,
+  token: string,
+  asignaciones: RoleAssignmentData[],
+): Promise<void> {
+  await apiCallPost<unknown>({
+    moodleUrl,
+    token,
+    wsfunction: "core_role_unassign_roles",
+    params: paramsDeRoles("unassignments", asignaciones),
   });
 }
