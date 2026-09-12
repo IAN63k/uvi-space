@@ -357,6 +357,16 @@ export interface GradebookCategoryCheck {
   passed: boolean;
 }
 
+/** Rol de un usuario tal como lo devuelve core_enrol_get_enrolled_users.
+ *  `name` viene vacio cuando el rol no se renombro en el curso; en ese caso
+ *  Moodle solo entrega `shortname`. La identidad real es siempre `roleid`. */
+export interface MoodleUserRole {
+  roleid: number;
+  name: string;
+  shortname: string;
+  sortorder: number;
+}
+
 export interface MoodleEnrolledUser {
   id: number;
   username: string;
@@ -365,7 +375,8 @@ export interface MoodleEnrolledUser {
   fullname: string;
   email: string;
   idnumber?: string;
-  roles?: Array<{ roleid: number; name: string; shortname: string }>;
+  /** Ausente si el token no puede ver los roles de los participantes. */
+  roles?: MoodleUserRole[];
 }
 
 export interface MoodleForumDiscussion {
