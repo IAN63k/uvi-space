@@ -1,5 +1,6 @@
 import type { MoodleConfig } from "@/lib/encrypted-local-storage";
 import { postMoodleJson } from "@/lib/moodle/api-client";
+import { ROLES_ASIGNABLES, nombreRol, type RolMoodle } from "@/lib/moodle/roles";
 import type {
   MoodleCategory,
   MoodleEnrolledUser,
@@ -201,13 +202,11 @@ export async function unenrolUsersChunk(
   return data.results;
 }
 
-/** Roles de matrícula soportados por el módulo */
-export const ENROLMENT_ROLES = [
-  { id: 3, label: "Profesor con edición" },
-  { id: 4, label: "Profesor sin edición" },
-  { id: 5, label: "Estudiante" },
-] as const;
+/** Roles con los que se puede matricular, derivados del catálogo único de
+ *  lib/moodle/roles.ts para que no se desincronicen con el resto de la app. */
+export const ENROLMENT_ROLES: ReadonlyArray<{ id: number; label: string; tipo: RolMoodle["tipo"] }> =
+  ROLES_ASIGNABLES.map((rol) => ({ id: rol.id, label: rol.nombre, tipo: rol.tipo }));
 
 export function roleLabel(roleId: number): string {
-  return ENROLMENT_ROLES.find((r) => r.id === roleId)?.label ?? `Rol ${roleId}`;
+  return nombreRol(roleId);
 }

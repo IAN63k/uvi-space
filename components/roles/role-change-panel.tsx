@@ -14,7 +14,11 @@ import {
   SheetHeader,
   SheetTitle,
 } from "@/components/ui/sheet";
-import { ROLES_ASIGNABLES, nombreRol } from "@/lib/moodle/roles";
+import {
+  ROLES_ASIGNABLES_CORE,
+  ROLES_ASIGNABLES_INSTITUCIONALES,
+  nombreRol,
+} from "@/lib/moodle/roles";
 import { rolesRetirables } from "@/lib/roles/plan";
 import type { ModoCambio, ParticipanteConsolidado } from "@/lib/roles/types";
 
@@ -78,11 +82,20 @@ export function RoleChangePanel({
               onChange={(event) => onRoleDestinoChange(Number(event.target.value))}
               className="h-9 w-full rounded-lg border border-input bg-background px-2.5 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
             >
-              {ROLES_ASIGNABLES.map((rol) => (
-                <option key={rol.id} value={rol.id}>
-                  {rol.nombre}
-                </option>
-              ))}
+              <optgroup label="Roles institucionales">
+                {ROLES_ASIGNABLES_INSTITUCIONALES.map((rol) => (
+                  <option key={rol.id} value={rol.id}>
+                    {rol.nombre}
+                  </option>
+                ))}
+              </optgroup>
+              <optgroup label="Roles core de Moodle">
+                {ROLES_ASIGNABLES_CORE.map((rol) => (
+                  <option key={rol.id} value={rol.id}>
+                    {rol.nombre}
+                  </option>
+                ))}
+              </optgroup>
             </select>
             <p className="text-[11px] text-muted-foreground/70">
               Solo se listan los roles que esta herramienta puede asignar.

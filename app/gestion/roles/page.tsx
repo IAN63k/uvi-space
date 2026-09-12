@@ -22,7 +22,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { useMoodleConfig } from "@/hooks/use-moodle-config";
-import { ROLES_ASIGNABLES } from "@/lib/moodle/roles";
+import { ROLES_ASIGNABLES_INSTITUCIONALES } from "@/lib/moodle/roles";
 import { consultarParticipantes } from "@/lib/roles/api";
 import { construirPlan } from "@/lib/roles/plan";
 import type { ModoCambio, ParticipantesResponse } from "@/lib/roles/types";
@@ -46,7 +46,9 @@ export default function CambioDeRolesPage() {
   const [panelAbierto, setPanelAbierto] = useState(false);
   const [fase, setFase] = useState<Fase>("seleccion");
 
-  const [roleDestinoId, setRoleDestinoId] = useState<number>(ROLES_ASIGNABLES[0].id);
+  const [roleDestinoId, setRoleDestinoId] = useState<number>(
+    ROLES_ASIGNABLES_INSTITUCIONALES[0].id,
+  );
   const [modo, setModo] = useState<ModoCambio>("agregar");
   // Se guardan las desviaciones del valor por defecto, no el estado completo:
   // así cambiar el rol destino recalcula los defaults sin estado obsoleto.
@@ -273,6 +275,7 @@ export default function CambioDeRolesPage() {
           <CardContent>
             <ChangePreview
               plan={plan}
+              todosLosParticipantes={participantes}
               onVolver={() => {
                 setFase("seleccion");
                 setPanelAbierto(true);

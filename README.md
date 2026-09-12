@@ -45,6 +45,10 @@ POST con el token en el cuerpo.
 	rol destino no queda confirmado, no se retira nada y se reporta el error.
 - Si el usuario ya tiene el rol destino, la asignación se omite como «sin
 	cambios»; en modo intercambiar el retiro sí se aplica.
+- Si el cambio deja algún curso **sin ningún usuario con rol de profesor con
+	edición**, la previsualización lo destaca y exige una confirmación explícita
+	antes de habilitar el botón de ejecutar. No lo bloquea: evita que pase por
+	descuido. El cálculo sale de los participantes ya consultados.
 - Máximo 3 llamadas concurrentes contra Moodle.
 - Un error no detiene el lote; cada operación se reporta por separado.
 
@@ -52,6 +56,13 @@ POST con el token en el cuerpo.
 habilitar un rol nuevo basta añadirlo con `asignable: true`. La lógica y la UI
 trabajan siempre por `roleid`, nunca por nombre: en Moodle un rol se puede
 renombrar por curso.
+
+Son asignables los core `editingteacher` (3), `teacher` (4) y `student` (5) y
+los institucionales `profesordeingles` (16) y `rolmatricula` (19). Lo que no
+está en el catálogo no se puede asignar ni retirar: `manager` (1) y los demás
+roles de sistema quedan fuera a propósito. La lista blanca del servidor y los
+roles del módulo de matrículas se derivan de esta misma lista, así que no pueden
+desincronizarse.
 
 **Token:** el módulo consume el token ya configurado en Ajustes a través de
 `hooks/use-moodle-config.ts`, el único punto que lee el almacenamiento del
