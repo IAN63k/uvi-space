@@ -617,8 +617,9 @@ export interface MoodleUserCourse {
 export interface UserSearchResponse {
   found: boolean;
   user?: MoodleUser;
-  /** Cantidad de cursos en los que el usuario ya está matriculado */
-  enrolledCount?: number;
+  /** Cantidad de cursos en los que el usuario ya está matriculado
+   *  (null si Moodle no respondió a tiempo) */
+  enrolledCount?: number | null;
   /** Criterio usado, para mostrar mensajes claros cuando no hay resultados */
   field: UserSearchField;
   value: string;
