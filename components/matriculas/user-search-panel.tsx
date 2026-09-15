@@ -22,7 +22,8 @@ const fieldLabel = (field: UserSearchField): string =>
 
 export interface FoundUser {
   user: MoodleUser;
-  enrolledCount: number;
+  /** null cuando no se pudo obtener el conteo de cursos */
+  enrolledCount: number | null;
 }
 
 interface UserSearchPanelProps {
@@ -59,7 +60,7 @@ export function UserSearchPanel({ config, found, onUserFound }: UserSearchPanelP
         setNotFound({ field: res.field, value: res.value });
         return;
       }
-      onUserFound({ user: res.user, enrolledCount: res.enrolledCount ?? 0 });
+      onUserFound({ user: res.user, enrolledCount: res.enrolledCount ?? null });
     } catch (err) {
       setError(err instanceof Error ? err.message : "Error inesperado al buscar el usuario");
     } finally {
@@ -171,8 +172,14 @@ function UserCard({ found, onClear }: { found: FoundUser; onClear: () => void })
         </dl>
         <div className="flex items-center gap-1.5 pt-0.5 text-sm text-emerald-700 dark:text-emerald-400">
           <BookMarked className="h-3.5 w-3.5" />
-          <span className="font-semibold">{enrolledCount}</span>
-          <span className="text-muted-foreground">curso{enrolledCount !== 1 ? "s" : ""} matriculado{enrolledCount !== 1 ? "s" : ""}</span>
+          {enrolledCount === null ? (
+            <span className="text-muted-foreground">No se pudo obtener el número de cursos matriculados</span>
+          ) : (
+            <>
+              <span className="font-semibold">{enrolledCount}</span>
+              <span className="text-muted-foreground">curso{enrolledCount !== 1 ? "s" : ""} matriculado{enrolledCount !== 1 ? "s" : ""}</span>
+            </>
+          )}
         </div>
       </div>
     </div>
