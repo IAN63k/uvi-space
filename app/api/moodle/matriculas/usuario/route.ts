@@ -12,6 +12,9 @@ type RequestBody = {
 
 const VALID_FIELDS: UserSearchField[] = ["idnumber", "username", "email", "fullname"];
 
+/** Tiempo máximo para obtener el conteo de cursos del usuario */
+const COURSES_TIMEOUT_MS = 15_000;
+
 export async function POST(request: Request) {
   let body: Partial<RequestBody>;
 
@@ -51,12 +54,22 @@ export async function POST(request: Request) {
       return NextResponse.json(response);
     }
 
-    const courses = await getUserCourses(moodleUrl.trim(), token.trim(), user.id);
+    // El conteo de cursos es informativo: si Moodle tarda o falla, se devuelve
+    // el usuario igualmente para no bloquear la matrícula/desmatrícula.
+    let enrolledCount: number | null = null;
+    try {
+      const courses = await getUserCourses(moodleUrl.trim(), token.trim(), user.id, {
+        timeoutMs: COURSES_TIMEOUT_MS,
+      });
+      enrolledCount = courses.length;
+    } catch {
+      enrolledCount = null;
+    }
 
     const response: UserSearchResponse = {
       found: true,
       user,
-      enrolledCount: courses.length,
+      enrolledCount,
       field,
       value: value.trim(),
     };

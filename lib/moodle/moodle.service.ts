@@ -19,9 +19,11 @@ type ApiCallParams = {
   token: string;
   wsfunction: string;
   extraParams?: Record<string, string | number>;
+  /** Sobrescribe el timeout por defecto del cliente (ms) */
+  timeoutMs?: number;
 };
 
-async function apiCall<T>({ moodleUrl, token, wsfunction, extraParams = {} }: ApiCallParams): Promise<T> {
+async function apiCall<T>({ moodleUrl, token, wsfunction, extraParams = {}, timeoutMs }: ApiCallParams): Promise<T> {
   const base = moodleUrl.replace(/\/$/, "");
   const url = `${base}/webservice/rest/server.php`;
 
@@ -32,6 +34,7 @@ async function apiCall<T>({ moodleUrl, token, wsfunction, extraParams = {} }: Ap
       wsfunction,
       ...extraParams,
     },
+    ...(timeoutMs !== undefined && { timeout: timeoutMs }),
   });
 
   if (data && typeof data === "object" && "exception" in data) {
@@ -805,18 +808,34 @@ export async function searchUsersByFullname(
   return Array.from(merged.values());
 }
 
-/** Devuelve los cursos en los que un usuario está matriculado. */
+/** Devuelve los cursos en los que un usuario está matriculado.
+ *  Por defecto Moodle cuenta los matriculados de CADA curso (returnusercount=1),
+ *  lo que con usuarios en muchos cursos puede tardar más que el timeout.
+ *  Se desactiva ese conteo; si la versión de Moodle no admite el parámetro,
+ *  se reintenta sin él. */
 export async function getUserCourses(
   moodleUrl: string,
   token: string,
   userId: number,
+  options: { timeoutMs?: number } = {},
 ): Promise<MoodleUserCourse[]> {
-  const data = await apiCall<MoodleUserCourse[]>({
-    moodleUrl,
-    token,
-    wsfunction: "core_enrol_get_users_courses",
-    extraParams: { userid: userId },
-  });
+  const call = (extraParams: Record<string, string | number>) =>
+    apiCall<MoodleUserCourse[]>({
+      moodleUrl,
+      token,
+      wsfunction: "core_enrol_get_users_courses",
+      extraParams,
+      timeoutMs: options.timeoutMs,
+    });
+
+  let data: MoodleUserCourse[];
+  try {
+    data = await call({ userid: userId, returnusercount: 0 });
+  } catch (err) {
+    const message = err instanceof Error ? err.message.toLowerCase() : "";
+    if (!message.includes("invalid parameter") && !message.includes("invalidparameter")) throw err;
+    data = await call({ userid: userId });
+  }
   return Array.isArray(data) ? data : [];
 }
 
