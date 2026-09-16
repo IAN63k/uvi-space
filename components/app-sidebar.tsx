@@ -55,6 +55,7 @@ const managementNavItems: NavItem[] = [
     ],
   },
   { label: "Roles en cursos", href: "/gestion/roles", shortLabel: "RL" },
+  { label: "Número ID de cursos", href: "/gestion/numero-id", shortLabel: "ID" },
 ];
 
 const adminNavItems: NavItem[] = [
