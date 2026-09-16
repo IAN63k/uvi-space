@@ -686,6 +686,15 @@ export interface RoleAssignmentData {
   courseid: number;
 }
 
+/** Aviso por elemento que devuelven las funciones de escritura de Moodle.
+ *  Llega con HTTP 200 y sin excepción: quien lo recibe decide si es un fallo. */
+export interface MoodleWarning {
+  item?: string;
+  itemid?: number;
+  warningcode: string;
+  message: string;
+}
+
 /** Resultado por curso de una operación de (des)matrícula */
 export interface EnrolmentResult {
   courseId: number;
