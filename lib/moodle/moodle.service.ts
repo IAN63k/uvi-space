@@ -1,6 +1,19 @@
 import https from "node:https";
 import axios from "axios";
-import type { MoodleCategory, MoodleCourse, MoodleEnrolledUser, MoodleForumDiscussion, ValidationRules, CourseError, CourseValidationResult, CategoryNode, CourseSummary, CourseSection, CourseModuleDetail, MoodlePage, MoodleForum, MoodleBlock, GradeTreeNode, GradeItem, MoodleAssignment, MoodleQuiz, MoodleUser, MoodleUserCourse, UserSearchField, BulkUserField, EnrolmentData, UnenrolmentData, RoleAssignmentData } from "./types";
+import type { MoodleCategory, MoodleCourse, MoodleEnrolledUser, MoodleForumDiscussion, ValidationRules, CourseError, CourseValidationResult, CategoryNode, CourseSummary, CourseSection, CourseModuleDetail, MoodlePage, MoodleForum, MoodleBlock, GradeTreeNode, GradeItem, MoodleAssignment, MoodleQuiz, MoodleUser, MoodleUserCourse, UserSearchField, BulkUserField, EnrolmentData, UnenrolmentData, RoleAssignmentData, MoodleWarning } from "./types";
+
+/** Excepción devuelta por Moodle. Conserva `errorcode` porque, a diferencia del
+ *  mensaje, no depende del idioma de la instancia: es lo que permite clasificar
+ *  un fallo (por ejemplo `nopermissions`) sin leer texto traducido. */
+export class MoodleApiError extends Error {
+  readonly errorcode: string | undefined;
+
+  constructor(message: string, errorcode: string | undefined) {
+    super(message);
+    this.name = "MoodleApiError";
+    this.errorcode = errorcode;
+  }
+}
 
 // Axios instance with a custom HTTPS agent that:
 // - Disables strict SSL verification (handles self-signed / intermediate certs common in .edu environments)
@@ -40,7 +53,7 @@ async function apiCall<T>({ moodleUrl, token, wsfunction, extraParams = {}, time
   if (data && typeof data === "object" && "exception" in data) {
     const err = data as { message?: string; errorcode?: string; debuginfo?: string };
     const detail = err.debuginfo ? ` (${err.debuginfo})` : "";
-    throw new Error((err.message ?? err.errorcode ?? `Error en ${wsfunction}`) + detail);
+    throw new MoodleApiError((err.message ?? err.errorcode ?? `Error en ${wsfunction}`) + detail, err.errorcode);
   }
 
   return data;
@@ -74,7 +87,7 @@ async function apiCallPost<T>({ moodleUrl, token, wsfunction, params = {} }: Api
   if (data && typeof data === "object" && "exception" in data) {
     const err = data as { message?: string; errorcode?: string; debuginfo?: string };
     const detail = err.debuginfo ? ` (${err.debuginfo})` : "";
-    throw new Error((err.message ?? err.errorcode ?? `Error en ${wsfunction}`) + detail);
+    throw new MoodleApiError((err.message ?? err.errorcode ?? `Error en ${wsfunction}`) + detail, err.errorcode);
   }
 
   return data;
@@ -452,6 +465,74 @@ export async function getCategoriesByParent(
   parentId: number,
 ): Promise<MoodleCategory[]> {
   return getDirectSubcategories(moodleUrl, token, parentId);
+}
+
+// ── Número ID del curso ───────────────────────────────────────────────────────
+// El idnumber es SIEMPRE una cadena, de extremo a extremo. Nunca se convierte a
+// número: «00123» y «123» son dos Números ID distintos, y una conversión
+// `Number(valor)` los confunde sin que Moodle devuelva ningún error. Las rutas
+// genéricas update-course y update-courses-batch cometen justo ese error con
+// cualquier valor formado solo por dígitos; no se deben usar para este campo.
+
+/** Cursos cuyo Número ID coincide con `idnumber`, con la comparación de la base
+ *  de datos (en MySQL con colación _ci no distingue mayúsculas).
+ *
+ *  Solo devuelve cursos que el token puede ver: un curso oculto que ya tenga el
+ *  valor no aparece, así que esta consulta no sustituye a la verificación. */
+export async function getCoursesByIdnumber(
+  moodleUrl: string,
+  token: string,
+  idnumber: string,
+): Promise<MoodleCourse[]> {
+  const data = await apiCallPost<{ courses?: MoodleCourse[] }>({
+    moodleUrl,
+    token,
+    wsfunction: "core_course_get_courses_by_field",
+    params: { field: "idnumber", value: idnumber },
+  });
+  return data.courses ?? [];
+}
+
+/** Varios cursos por id en una sola llamada (field=ids). */
+export async function getCoursesByIds(
+  moodleUrl: string,
+  token: string,
+  courseIds: number[],
+): Promise<MoodleCourse[]> {
+  const data = await apiCallPost<{ courses?: MoodleCourse[] }>({
+    moodleUrl,
+    token,
+    wsfunction: "core_course_get_courses_by_field",
+    params: { field: "ids", value: courseIds.join(",") },
+  });
+  return data.courses ?? [];
+}
+
+/** Escribe el Número ID de un curso con core_course_update_courses. Solo envía
+ *  `id` e `idnumber`: ningún otro campo del curso viaja en la petición.
+ *
+ *  Moodle tiene dos vías de fallo y ninguna puede pasar por éxito:
+ *  - excepción (token inválido, función no habilitada en el servicio): se lanza
+ *    como MoodleApiError con su errorcode;
+ *  - HTTP 200 con `warnings[]`: update_courses captura la excepción de cada curso
+ *    y la devuelve como warning (`courseidnumbertaken`, `nopermissions`…). Se
+ *    devuelven tal cual y quien llama trata cualquier warning como fallo.
+ *
+ *  Devuelve `null` si la respuesta no trae `warnings`: no es un éxito, es una
+ *  respuesta que no se reconoce, y solo la relectura del curso puede confirmarla. */
+export async function updateCourseIdnumber(
+  moodleUrl: string,
+  token: string,
+  courseId: number,
+  idnumber: string,
+): Promise<MoodleWarning[] | null> {
+  const data = await apiCallPost<{ warnings?: MoodleWarning[] } | null>({
+    moodleUrl,
+    token,
+    wsfunction: "core_course_update_courses",
+    params: { "courses[0][id]": courseId, "courses[0][idnumber]": idnumber },
+  });
+  return Array.isArray(data?.warnings) ? data.warnings : null;
 }
 
 /** Fetches all page-type activity instances for a course in a single call. */
